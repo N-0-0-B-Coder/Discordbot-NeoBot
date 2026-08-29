@@ -55,8 +55,8 @@ The Bot operates through Discord's API and is subject to Discord's Terms of Serv
 
 For inquiries, support, or to report issues:
 
-- **Email:** [EMAIL ADDRESS]
-- **Discord:** [DISCORD SERVER/CONTACT LINK]
+- **Email:** [EMAILADDRESS@mail.com]
+- **Discord:** [DISCORDSERVER-CONTACT.LINK]
 
 ---
 
