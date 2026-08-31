@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+# Read-only: this workflow only checks code, it never publishes anything.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Report every version even when one fails — knowing it breaks on 22 but
+      # passes on 24 is the useful signal, and fail-fast would hide it.
+      fail-fast: false
+      matrix:
+        # 22 is the floor declared in package.json engines; 24 is what Railway
+        # provisions and what development happens on.
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        # `npm ci` installs exactly the lockfile — the same command Railway
+        # runs — so a lockfile that has drifted from package.json fails here
+        # rather than on deploy.
+        run: npm ci
+        env:
+          # youtube-dl-exec fetches the yt-dlp release from the GitHub API.
+          # Unauthenticated requests are rate-limited per IP, and Actions
+          # runners share addresses, so pass the automatic token to avoid
+          # intermittent install failures.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check every source file parses
+        # Cheap, and catches a syntax error in a file no test happens to import.
+        run: |
+          find src test -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Run tests
+        # No secrets needed: test/setup.js supplies a dummy token and points the
+        # database at a throwaway file. Nothing here contacts Discord.
+        run: npm test
+
+      - name: Verify the bundled media binaries run
+        # The install downloads yt-dlp and ffmpeg, and what it downloads differs
+        # per platform. This proves they actually execute on Linux — the family
+        # of failure that only ever appears on deploy.
+        run: |
+          node -e "
+            const { createRequire } = require('node:module');
+            const { execFileSync } = require('node:child_process');
+            const req = createRequire(process.cwd() + '/');
+            const ytdlp = req('youtube-dl-exec/src/constants.js').YOUTUBE_DL_PATH;
+            const ffmpeg = req('ffmpeg-static');
+            console.log('yt-dlp:', String(execFileSync(ytdlp, ['--version'])).trim());
+            console.log('ffmpeg:', String(execFileSync(ffmpeg, ['-version'])).split('\n')[0]);
+          "

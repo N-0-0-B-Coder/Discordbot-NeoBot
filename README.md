@@ -129,6 +129,18 @@ A few exist specifically to stop bugs from coming back:
 Tests run against a throwaway SQLite file in the OS temp directory, so they
 never touch `data/neobot.sqlite`.
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: `npm ci`, a
+syntax check over every file, the test suite, and a probe that the bundled
+`yt-dlp` and `ffmpeg` binaries actually execute. It runs on Node 22 and 24 —
+22 being the floor in `engines`, 24 being what Railway provisions.
+
+It runs on Linux, so it exercises the same platform path as a deploy. Note the
+limit though: GitHub's runners ship Python, so CI would **not** have caught the
+Railway build failure, whose cause was a minimal image without it. CI catches
+code regressions; the startup check in the bot catches host differences.
+
 ### What tests cannot cover
 
 Everything that needs a live gateway connection: whether the bot logs in,
