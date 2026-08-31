@@ -239,9 +239,36 @@ Run `npm run deploy` once locally (or as a one-off Railway command) after the
 first deploy — the bot never registers commands at startup, so a crash loop can
 never wipe them.
 
+### Voice does not work on Railway
+
+Confirmed 2026-09-01: the bot joins a voice channel, never reaches the Ready
+state, and aborts after 20 seconds. Everything else — commands, moderation,
+game lookups — works fine.
+
+The cause is the network, not the code. Discord signals voice over WebSocket
+but carries the **audio over UDP** on a high port, and Railway does not appear
+to route outbound UDP. Others have hit the same thing with no resolution:
+<https://station.railway.com/questions/discord-voice-udp-connections-failing-502e2d88>
+
+The dependency side is ruled out — `npm run doctor` prints the voice dependency
+report, and encryption (`libsodium-wrappers`) plus ffmpeg-with-libopus are both
+present. On a failure the log names the exact state it stalled in, which
+separates the two causes:
+
+| Stalled in | Means |
+| --- | --- |
+| `signalling` | Discord never sent a voice server — check the Connect permission and the `GuildVoiceStates` intent |
+| `connecting` | Discord replied but the UDP handshake never completed — the host is blocking UDP |
+
+**To confirm it is the host, run the bot locally and try the same command.** If
+it works there, the code is fine.
+
+**Hosts that do carry voice:** a plain VPS (any provider), Fly.io, or Oracle
+Cloud's free tier. If voice matters, run the bot there; Railway remains fine for
+a text-only deployment.
+
 **On Replit:** workable, but the free tier sleeps on inactivity and a sleeping
-bot drops its gateway connection, so music cuts out. Railway's Hobby plan is the
-better fit for anything with voice.
+bot drops its gateway connection. It has the same UDP question besides.
 
 ---
 

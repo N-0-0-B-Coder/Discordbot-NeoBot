@@ -3,6 +3,7 @@ import { log } from '../../lib/logger.js';
 import { COLORS, error } from '../../lib/embeds.js';
 import { getPlayer } from '../../music/manager.js';
 import { requireVoiceChannel } from '../../music/guards.js';
+import { describeVoiceFailure } from '../../music/diagnose.js';
 
 export const data = new SlashCommandBuilder()
   .setName('tts-join')
@@ -28,10 +29,12 @@ export async function execute(interaction) {
   try {
     await session.connect(channel);
   } catch (err) {
+    // manager.js has already logged which state it stalled in, plus the voice
+    // dependency report; this is the short version for whoever ran the command.
     log.error('Failed to join voice channel for TTS:', err);
     if (!session.isPlaying) session.destroy();
     await interaction.editReply({
-      embeds: [error(`I could not connect to **${channel.name}**.`)],
+      embeds: [error(describeVoiceFailure(err, channel.name))],
     });
     return;
   }

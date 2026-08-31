@@ -4,6 +4,7 @@ import { log } from '../../lib/logger.js';
 import { COLORS, error, formatDuration, truncate } from '../../lib/embeds.js';
 import { release } from '../../lib/cooldowns.js';
 import { getPlayer } from '../../music/manager.js';
+import { describeVoiceFailure } from '../../music/diagnose.js';
 import { requireVoiceChannel } from '../../music/guards.js';
 import { resolveQuery } from '../../music/source.js';
 
@@ -93,10 +94,12 @@ export async function execute(interaction) {
   try {
     await player.connect(channel);
   } catch (err) {
+    // manager.js has already logged the state it stalled in and the dependency
+    // report; this is just the short version for the person who asked.
     log.error('Failed to join voice channel:', err);
     player.destroy();
     await interaction.editReply({
-      embeds: [error(`I could not connect to **${channel.name}**.`)],
+      embeds: [error(describeVoiceFailure(err, channel.name))],
     });
     return;
   }

@@ -6,6 +6,7 @@ import {
   createAudioResource,
   entersState,
   joinVoiceChannel,
+  generateDependencyReport,
 } from '@discordjs/voice';
 import { config } from '../lib/config.js';
 import { log } from '../lib/logger.js';
@@ -123,7 +124,24 @@ export class GuildVoiceSession {
     });
 
     this.subscribeTo(this.player);
-    await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
+
+    try {
+      await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
+    } catch (err) {
+      // "Never became Ready" is the single least informative voice failure, and
+      // the state it got stuck in says which half broke. Signalling means
+      // Discord never answered the join; Connecting means it answered but the
+      // UDP handshake did not complete — the usual shape of a host that blocks
+      // or NATs outbound UDP.
+      const state = this.connection?.state?.status ?? 'destroyed';
+      log.error(
+        `[${this.guild.id}] Voice connection stalled in "${state}" after 20s ` +
+          `(channel ${voiceChannel.id}).`,
+      );
+      log.error(voiceDiagnosis(state));
+      throw new VoiceConnectError(state, { cause: err });
+    }
+
     return this.connection;
   }
 
@@ -348,6 +366,49 @@ export class GuildVoiceSession {
     this.connection = null;
     sessions.delete(this.guild.id);
   }
+}
+
+/** Thrown when a voice connection never reaches Ready, carrying the stuck state. */
+export class VoiceConnectError extends Error {
+  constructor(state, options) {
+    super(`Voice connection stalled in "${state}"`, options);
+    this.name = 'VoiceConnectError';
+    this.state = state;
+  }
+}
+
+/**
+ * Maps the stuck connection state onto its likely cause.
+ *
+ * Voice is the one feature that can be perfectly configured on Discord's side
+ * and still fail because of the network the bot runs on, so the log has to
+ * tell those cases apart — otherwise every report looks identical and points
+ * nowhere.
+ */
+function voiceDiagnosis(state) {
+  const report = generateDependencyReport();
+
+  if (state === VoiceConnectionStatus.Signalling) {
+    return [
+      'Stuck at "signalling": the join was sent but Discord never replied with',
+      'a voice server. That usually means the gateway is not delivering',
+      'VOICE_SERVER_UPDATE / VOICE_STATE_UPDATE (check the GuildVoiceStates',
+      'intent), or the bot lacks Connect on the channel.',
+      report,
+    ].join('\n');
+  }
+
+  if (state === VoiceConnectionStatus.Connecting) {
+    return [
+      'Stuck at "connecting": Discord answered, but the UDP handshake never',
+      'completed. Voice needs OUTBOUND UDP to arbitrary high ports, which some',
+      'hosting platforms block or NAT. This is the classic shape of a bot that',
+      'works locally and fails once deployed.',
+      report,
+    ].join('\n');
+  }
+
+  return report;
 }
 
 export function getPlayer(guild) {
