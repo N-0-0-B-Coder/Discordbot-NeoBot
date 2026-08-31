@@ -92,8 +92,33 @@ means the token is wrong, `404` means the application or guild id is wrong, and
 `400` lists which command Discord rejected and why.
 
 Re-run `npm run deploy` whenever a command's name, description, or options
-change. When you are ready to leave the test server, run `npm run deploy:global`
-— global commands can take up to an hour to appear.
+change.
+
+### Guild vs global registration
+
+**Guild** (`npm run deploy`) registers into `DISCORD_GUILD_ID` and appears
+instantly — right for development. **Global** (`npm run deploy:global`) reaches
+every server the bot is in, and can take up to an hour to propagate.
+
+Registration targets your *application*, not a deployment, so it is a one-off
+command you run from anywhere with the token — **there is nothing to configure
+on Railway for this.** Running `npm run deploy:global` on your laptop has
+exactly the same effect as running it in a container. It deliberately does not
+run at startup: a crash-looping container would re-register on every restart
+and burn the daily quota, and a `PUT` is a full replace, so a partial load
+would silently delete commands.
+
+**The two scopes are independent**, which is the trap when switching. Register
+globally while the guild copies still exist and that server shows every command
+**twice**, with nothing to explain why. `deploy:global` now checks for leftovers
+and tells you; clear them with:
+
+```bash
+npm run deploy:clear-guild
+```
+
+Keep both only if you want your test server on a faster update loop than
+everyone else — a common and deliberate setup while developing.
 
 ### 4. Set the server up
 

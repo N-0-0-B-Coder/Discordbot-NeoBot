@@ -19,9 +19,14 @@ import { closeDatabase } from './db/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const global = process.argv.includes('--global');
+const clearGuild = process.argv.includes('--clear-guild');
 
 const commands = await loadCommands(join(here, 'commands'));
-const body = [...commands.values()].map((command) => command.data.toJSON());
+
+// --clear-guild removes the guild-scoped copies by registering an empty set.
+// Needed when moving to global: the two scopes are independent, so leaving the
+// guild copies behind shows every command TWICE in that server.
+const body = clearGuild ? [] : [...commands.values()].map((c) => c.data.toJSON());
 
 if (!global && !config.guildId) {
   throw new Error(
@@ -30,17 +35,34 @@ if (!global && !config.guildId) {
 }
 
 const rest = new REST().setToken(config.token);
-const route = global
-  ? Routes.applicationCommands(config.clientId)
-  : Routes.applicationGuildCommands(config.clientId, config.guildId);
+const route =
+  global && !clearGuild
+    ? Routes.applicationCommands(config.clientId)
+    : Routes.applicationGuildCommands(config.clientId, config.guildId);
 
 try {
   const result = await rest.put(route, { body });
-  log.success(
-    `Registered ${highlight(result.length)} command(s) ${
-      global ? 'globally' : `to guild ${config.guildId}`
-    }: ${result.map((c) => `/${c.name}`).join(', ')}`,
-  );
+
+  if (clearGuild) {
+    log.success(
+      `Cleared the guild-scoped commands from guild ${config.guildId}. ` +
+        'Only the global set remains.',
+    );
+  } else {
+    log.success(
+      `Registered ${highlight(result.length)} command(s) ${
+        global ? 'globally' : `to guild ${config.guildId}`
+      }: ${result.map((c) => `/${c.name}`).join(', ')}`,
+    );
+  }
+
+  if (global && !clearGuild) {
+    log.info(
+      'Global commands can take up to an hour to appear. Existing guild ' +
+        'commands keep working in the meantime.',
+    );
+    await warnAboutDuplicates();
+  }
 } catch (err) {
   // Without this, a rejected PUT prints the entire request body — every command,
   // every option — burying the one line that says what actually went wrong.
@@ -150,6 +172,42 @@ async function explain(err) {
   }
 
   return `Command registration failed: ${err?.message ?? err}`;
+}
+
+/**
+ * After a global deploy, checks whether guild-scoped copies are still
+ * registered — the two scopes are independent, and a server holding both shows
+ * every command twice with no hint as to why.
+ */
+async function warnAboutDuplicates() {
+  if (!config.guildId) return;
+
+  let guildCommands;
+  try {
+    guildCommands = await rest.get(
+      Routes.applicationGuildCommands(config.clientId, config.guildId),
+    );
+  } catch {
+    // Not fatal — the global registration already succeeded.
+    return;
+  }
+
+  if (!Array.isArray(guildCommands) || guildCommands.length === 0) return;
+
+  log.warn(
+    [
+      `Guild ${config.guildId} still has ${guildCommands.length} guild-scoped ` +
+        'command(s) registered.',
+      '',
+      'Command scopes are independent, so that server will show every command',
+      'TWICE once the global set propagates. Clear the guild copies with:',
+      '',
+      '    npm run deploy:clear-guild',
+      '',
+      'Keep them only if you deliberately want that server on a faster update',
+      'loop than everyone else.',
+    ].join('\n'),
+  );
 }
 
 /**

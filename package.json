@@ -12,6 +12,7 @@
     "dev": "node --watch src/index.js",
     "deploy": "node src/deploy-commands.js",
     "deploy:global": "node src/deploy-commands.js --global",
+    "deploy:clear-guild": "node src/deploy-commands.js --clear-guild",
     "invite": "node src/invite.js",
     "doctor": "node src/doctor.js",
     "test": "node --import ./test/setup.js --test \"test/**/*.test.js\"",
