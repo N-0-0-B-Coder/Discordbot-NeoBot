@@ -1,15 +1,50 @@
+import { existsSync } from 'node:fs';
 import 'dotenv/config';
+
+/**
+ * Collected rather than thrown one at a time, so a fresh deployment learns
+ * about every missing variable in one go instead of discovering them across
+ * three failed restarts.
+ */
+const missing = [];
 
 /** Reads a required variable, failing loudly at boot rather than at first use. */
 function required(name) {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new Error(
-      `Missing required environment variable ${name}. ` +
-        'Copy .env.example to .env and fill it in.',
-    );
+    missing.push(name);
+    return '';
   }
   return value;
+}
+
+/**
+ * Advice depends on where this is running. Telling someone on Railway to
+ * "copy .env.example to .env" is useless — there is no file to edit, and the
+ * fix is in the platform's dashboard.
+ */
+function explainMissing() {
+  const names = missing.map((name) => `  - ${name}`).join('\n');
+  const localEnvFile = existsSync(new URL('../../.env', import.meta.url));
+
+  const advice = localEnvFile
+    ? 'Your .env exists but does not set them. Fill them in there.'
+    : [
+        'No .env file was found, so this is probably a hosted deployment.',
+        'Set these in your platform\'s variables, not in a file:',
+        '',
+        '  Railway  -> your service -> Variables -> New Variable',
+        '',
+        'Locally, copy .env.example to .env instead.',
+      ].join('\n');
+
+  return [
+    `Missing ${missing.length} required environment variable(s):`,
+    '',
+    names,
+    '',
+    advice,
+  ].join('\n');
 }
 
 function optional(name, fallback = null) {
@@ -62,3 +97,5 @@ export const config = {
     maxTrackDurationSec: 3 * 60 * 60,
   },
 };
+
+if (missing.length > 0) throw new Error(explainMissing());
