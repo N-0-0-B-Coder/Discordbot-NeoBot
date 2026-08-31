@@ -13,6 +13,7 @@
     "deploy": "node src/deploy-commands.js",
     "deploy:global": "node src/deploy-commands.js --global",
     "invite": "node src/invite.js",
+    "doctor": "node src/doctor.js",
     "test": "node --import ./test/setup.js --test \"test/**/*.test.js\"",
     "test:watch": "node --import ./test/setup.js --test --watch \"test/**/*.test.js\"",
     "check": "node --check src/index.js && npm test"

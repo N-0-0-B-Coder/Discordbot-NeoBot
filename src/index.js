@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { config } from './lib/config.js';
 import { log } from './lib/logger.js';
+import { highlight } from './lib/colors.js';
 import { loadCommands, loadComponents, loadEvents } from './lib/loaders.js';
 import { closeDatabase } from './db/index.js';
 import { purgeExpiredInfractions } from './db/infractions.js';
@@ -48,7 +49,7 @@ client.components = await loadComponents(join(here, 'components'));
 await loadEvents(join(here, 'events'), client);
 
 log.info(
-  `Loaded ${client.commands.size} commands and ${client.components.size} component handler(s).`,
+  `Loaded ${highlight(client.commands.size)} commands and ${highlight(client.components.size)} component handler(s).`,
 );
 
 // Honour the 30-day retention window from PRIVACY_POLICY.md: sweep at boot,

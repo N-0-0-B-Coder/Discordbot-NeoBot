@@ -12,6 +12,7 @@
  */
 import { PermissionsBitField, PermissionFlagsBits } from 'discord.js';
 import { config } from './lib/config.js';
+import { bold, green, highlight, red, underline } from './lib/colors.js';
 
 // Named rather than a magic number so it stays auditable — every entry should
 // map to a feature, and anything unused should be removed.
@@ -76,7 +77,9 @@ function decode(raw) {
 
   console.log('Required by this bot:');
   for (const name of requiredNames) {
-    console.log(`  ${granted.has(name) ? '[ok]     ' : '[MISSING]'} ${name}`);
+    console.log(
+      `  ${granted.has(name) ? green('[ok]     ') : red(bold('[MISSING]'))} ${name}`,
+    );
   }
 
   const extra = [...granted].filter((name) => !requiredNames.includes(name)).sort();

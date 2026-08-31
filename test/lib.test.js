@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { parseDuration, formatDurationMs } from '../src/lib/duration.js';
 import { consume, release } from '../src/lib/cooldowns.js';
 import { truncate, formatDuration } from '../src/lib/embeds.js';
+import { paint, green, red, highlight } from '../src/lib/colors.js';
+import { log } from '../src/lib/logger.js';
 
 describe('parseDuration', () => {
   test('parses single units', () => {
@@ -65,5 +67,40 @@ describe('cooldowns', () => {
   test('zero or missing cooldown never blocks', () => {
     assert.equal(consume('c6', 'u1', 0), 0);
     assert.equal(consume('c6', 'u1', undefined), 0);
+  });
+});
+
+describe('colours', () => {
+  test('always returns the text, styled or not', () => {
+    // Output is stripped when stdout is not a TTY (CI, piped logs, Railway),
+    // so the only invariant worth asserting is that the text survives.
+    for (const style of [green, red, highlight]) {
+      assert.ok(style('hello').includes('hello'));
+    }
+  });
+
+  test('an unknown style never throws', () => {
+    // Colour is decoration; it must not be the thing that breaks a log call.
+    assert.doesNotThrow(() => paint('not-a-real-colour', 'hello'));
+    assert.ok(paint('not-a-real-colour', 'hello').includes('hello'));
+  });
+
+  test('non-string input is coerced', () => {
+    assert.ok(paint('green', 42).includes('42'));
+  });
+});
+
+describe('logger', () => {
+  test('exposes every level including success', () => {
+    for (const level of ['error', 'warn', 'info', 'success', 'debug']) {
+      assert.equal(typeof log[level], 'function', `log.${level} missing`);
+    }
+  });
+
+  test('logging does not throw at any level', () => {
+    assert.doesNotThrow(() => {
+      log.debug('debug line');
+      log.success('success line');
+    });
   });
 });
