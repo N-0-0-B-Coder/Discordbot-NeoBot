@@ -76,10 +76,15 @@ winget install OpenJS.NodeJS.LTS
 
 ```bash
 npm install
-# then fill in .env  (already present, gitignored, never committed)
+cp .env.example .env   # then fill in the three required values
+npm run doctor         # verifies the token, intents, invite and membership
 npm run deploy         # registers slash commands to DISCORD_GUILD_ID (instant)
 npm start
 ```
+
+`.env.example` documents every variable, where to get it, and which ones a
+server can override at runtime with `/config`. `.env` itself is gitignored and
+must never be committed.
 
 If `npm run deploy` fails, it prints one explanatory message rather than the
 whole payload: `Missing Access (50001)` means the invite scopes (above), `401`

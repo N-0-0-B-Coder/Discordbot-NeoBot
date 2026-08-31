@@ -121,3 +121,56 @@ describe('component handlers', () => {
     }
   });
 });
+
+describe('.env.example stays in sync with the code', () => {
+  const root = join(src, '..');
+  const template = readFileSync(join(root, '.env.example'), 'utf8');
+  const configSource = readFileSync(join(src, 'lib', 'config.js'), 'utf8');
+
+  // Every name config.js reads via required()/optional().
+  const used = [
+    ...configSource.matchAll(/(?:required|optional)\('([A-Z_]+)'/g),
+  ].map((m) => m[1]);
+
+  const documented = [...template.matchAll(/^([A-Z_]+)=/gm)].map((m) => m[1]);
+
+  test('every variable the code reads is documented', () => {
+    for (const name of new Set(used)) {
+      assert.ok(
+        documented.includes(name),
+        `${name} is read by config.js but missing from .env.example`,
+      );
+    }
+  });
+
+  test('every documented variable is actually read', () => {
+    for (const name of documented) {
+      assert.ok(
+        used.includes(name),
+        `${name} is in .env.example but nothing reads it — stale entry`,
+      );
+    }
+  });
+
+  test('no secret is filled in', () => {
+    // The template ships in the repo; the fields that carry a token, key or id
+    // must always be blank in it.
+    const mustBeBlank = [
+      'DISCORD_TOKEN',
+      'DISCORD_CLIENT_ID',
+      'DISCORD_GUILD_ID',
+      'ITAD_API_KEY',
+      'ERROR_LOG_CHANNEL_ID',
+      'OWNER_ID',
+    ];
+    for (const name of mustBeBlank) {
+      const match = template.match(new RegExp(`^${name}=(.*)$`, 'm'));
+      assert.ok(match, `${name} missing from .env.example`);
+      assert.equal(
+        match[1].trim(),
+        '',
+        `${name} has a value in .env.example — never commit a real one`,
+      );
+    }
+  });
+});
