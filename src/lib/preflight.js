@@ -16,9 +16,16 @@
  * All of it is answerable over REST, with no gateway connection, so the same
  * code serves `npm run doctor`, `npm start` and the deploy error path.
  */
+import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { promisify } from 'node:util';
+import ffmpegPath from 'ffmpeg-static';
 import { ApplicationFlagsBitField, Routes } from 'discord.js';
 import { config } from './config.js';
 import { bold, green, red, yellow } from './colors.js';
+
+const run = promisify(execFile);
+const require = createRequire(import.meta.url);
 
 /** @typedef {{ level: 'error'|'warn'|'ok', title: string, detail?: string, fix?: string }} Finding */
 
@@ -68,7 +75,75 @@ export async function runPreflight(rest) {
   const guilds = await fetchSafely(() => rest.get(Routes.userGuilds()));
   if (guilds) checkGuilds(guilds, findings);
 
+  await checkBinaries(findings);
+
   return findings;
+}
+
+/**
+ * Confirms the bundled media binaries actually execute on THIS platform.
+ *
+ * They arrive through npm, so it is tempting to assume they work — but the
+ * shape of what npm fetches differs per platform. On Linux `youtube-dl-exec`
+ * downloads yt-dlp as a Python *zipapp*, which needs a system Python 3.9+;
+ * on Windows it gets a self-contained .exe that does not. A deploy to a
+ * Python-less image therefore installs cleanly and then fails on the first
+ * /play, with an error nobody connects back to the build.
+ *
+ * Running each binary once at startup turns that into a line you can read.
+ */
+async function checkBinaries(findings) {
+  await probe(findings, {
+    label: 'yt-dlp',
+    usedBy: '/play',
+    resolve: () => require('youtube-dl-exec/src/constants.js').YOUTUBE_DL_PATH,
+    args: ['--version'],
+    hint:
+      'On Linux this binary is a Python zipapp and needs python3 >= 3.9 on the\n' +
+      '  host. nixpacks.toml installs it for Railway; other hosts need the same,\n' +
+      '  or set YOUTUBE_DL_FILENAME=yt-dlp_linux to fetch the standalone build.',
+  });
+
+  await probe(findings, {
+    label: 'ffmpeg',
+    usedBy: 'all audio — music and TTS',
+    resolve: () => ffmpegPath,
+    args: ['-version'],
+    hint: 'Reinstall dependencies so ffmpeg-static can fetch its binary.',
+  });
+}
+
+async function probe(findings, { label, usedBy, resolve, args, hint }) {
+  let binary;
+  try {
+    binary = resolve();
+  } catch {
+    binary = null;
+  }
+
+  if (!binary) {
+    findings.push({
+      level: 'error',
+      title: `${label} is missing`,
+      detail: `Needed by ${usedBy}.`,
+      fix: hint,
+    });
+    return;
+  }
+
+  try {
+    // A version flag is the cheapest thing that proves it can actually run.
+    const { stdout } = await run(binary, args, { timeout: 10_000 });
+    const version = String(stdout).trim().split('\n')[0].slice(0, 60);
+    findings.push({ level: 'ok', title: `${label} runs (${version})` });
+  } catch (err) {
+    findings.push({
+      level: 'error',
+      title: `${label} will not run`,
+      detail: `Needed by ${usedBy}.\n  ${String(err.message).split('\n')[0]}`,
+      fix: hint,
+    });
+  }
 }
 
 function checkCodeGrant(application, findings) {

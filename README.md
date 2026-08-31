@@ -171,8 +171,32 @@ connection is not.
 2. Add every variable from your local `.env` under **Variables**.
 3. **Add a volume** mounted at `/data`, and set `DATABASE_PATH=/data/neobot.sqlite`.
    Without a volume the container filesystem is wiped on every redeploy and the
-   whole infraction log goes with it.
-4. `railway.json` already sets the start command and restart policy.
+   whole infraction log — plus every `/config` setting — goes with it.
+4. `railway.json` sets the start command and restart policy; `nixpacks.toml`
+   handles the build.
+
+### Why `nixpacks.toml` exists
+
+**Python.** `youtube-dl-exec` will not install without Python 3.9+, and on
+Linux that is not a formality: it downloads the release asset named `yt-dlp`,
+which is a Python *zipapp* (~3 MB) needing a system Python to run. Windows gets
+`yt-dlp.exe`, which is self-contained — so this only ever appears on deploy.
+Skipping the check with `YOUTUBE_DL_SKIP_PYTHON_CHECK` would let the build pass
+and then fail on the first `/play`. `nixpacks.toml` installs `python3` instead.
+
+*Leaner alternative:* set `YOUTUBE_DL_FILENAME=yt-dlp_linux` and
+`YOUTUBE_DL_SKIP_PYTHON_CHECK=1` to fetch the 40 MB standalone build, which
+embeds its own Python. Both variables must then be present at **runtime** as
+well, since the package resolves the binary path from them.
+
+**No build step.** Nixpacks otherwise picks up `npm run deploy` as the build
+command. Registering slash commands during a build needs `DISCORD_TOKEN` at
+build time, re-registers on every deploy, and makes a Discord outage fail the
+build. Registration stays a deliberate manual step — run `npm run deploy`
+locally when a command changes.
+
+After deploying, check the logs: startup runs the same checks as `npm run
+doctor`, including whether `yt-dlp` and `ffmpeg` actually execute on the host.
 
 Run `npm run deploy` once locally (or as a one-off Railway command) after the
 first deploy — the bot never registers commands at startup, so a crash loop can

@@ -1,0 +1,35 @@
+# Nixpacks build configuration (Railway).
+#
+# Two things the auto-detected build gets wrong for this project.
+#
+# 1. PYTHON
+#    `youtube-dl-exec` refuses to install without Python >= 3.9, and on Linux
+#    that is not a vestigial check: it downloads the release asset named
+#    `yt-dlp`, which is a Python *zipapp* (~3 MB) and needs a system Python to
+#    run. Windows gets `yt-dlp.exe`, which is self-contained — which is why
+#    this only shows up when deploying.
+#
+#    Skipping the check with YOUTUBE_DL_SKIP_PYTHON_CHECK would let the build
+#    pass and then fail at runtime on the first /play. Installing Python is the
+#    honest fix.
+#
+#    (The leaner alternative is to fetch the standalone build instead, by
+#    setting YOUTUBE_DL_FILENAME=yt-dlp_linux and YOUTUBE_DL_SKIP_PYTHON_CHECK=1.
+#    That needs no Python at all, but both variables must then also be present
+#    at RUNTIME, because the package resolves the binary path from them. Fewer
+#    moving parts to keep Python.)
+#
+# 2. BUILD STEP
+#    Nixpacks picked up `npm run deploy` as the build command. Registering
+#    slash commands during a build is wrong here: it needs DISCORD_TOKEN at
+#    build time, re-registers on every deploy, and makes an outage at Discord
+#    fail the build. Command registration is a deliberate manual step
+#    (`npm run deploy`) — see the note in src/deploy-commands.js.
+
+[phases.setup]
+# "..." keeps the packages Nixpacks detected (nodejs, npm) and adds to them.
+nixPkgs = ["...", "python3"]
+
+[phases.build]
+# Nothing to build — this is plain ESM JavaScript, run directly by Node.
+cmds = []
