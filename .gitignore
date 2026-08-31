@@ -1,0 +1,20 @@
+node_modules/
+.env
+*.env
+
+# SQLite database + WAL sidecars
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs / OS noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

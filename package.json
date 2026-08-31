@@ -1,0 +1,31 @@
+{
+  "name": "neobot",
+  "version": "0.1.0",
+  "description": "Nghia's Discord bot: TTS, moderation, music and game-sale lookups.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "deploy:global": "node src/deploy-commands.js --global",
+    "invite": "node src/invite.js",
+    "test": "node --import ./test/setup.js --test \"test/**/*.test.js\"",
+    "test:watch": "node --import ./test/setup.js --test --watch \"test/**/*.test.js\"",
+    "check": "node --check src/index.js && npm test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/voice": "^0.18.0",
+    "better-sqlite3": "^12.2.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "ffmpeg-static": "^5.2.0",
+    "libsodium-wrappers": "^0.7.15",
+    "msedge-tts": "^2.0.7",
+    "youtube-dl-exec": "^3.0.12"
+  }
+}
