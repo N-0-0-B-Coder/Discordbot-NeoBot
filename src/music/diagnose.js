@@ -22,8 +22,10 @@ export function describeVoiceFailure(err, channelName) {
     return [
       `I joined **${channelName}** but Discord never sent me a voice server.`,
       '',
-      'That usually means I am missing the **Connect** permission on the',
-      'channel, or the channel is full. An admin can check both.',
+      'The most common cause is **a second copy of me running on the same',
+      'token** — Discord replies to one of us and the other waits forever.',
+      'Otherwise: check I can see the channel and that it is not full.',
+      'The server log narrows it down further.',
     ].join('\n');
   }
 

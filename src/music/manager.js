@@ -134,11 +134,20 @@ export class GuildVoiceSession {
       // UDP handshake did not complete — the usual shape of a host that blocks
       // or NATs outbound UDP.
       const state = this.connection?.state?.status ?? 'destroyed';
+
+      // Reaching Ready needs TWO gateway events: VOICE_STATE_UPDATE (our own
+      // state, carrying session_id) and VOICE_SERVER_UPDATE (endpoint + token).
+      // Whether our own voice state landed splits the remaining causes cleanly,
+      // so record it rather than listing possibilities.
+      const ownVoiceChannel = this.guild.members?.me?.voice?.channelId ?? null;
+      const joined = ownVoiceChannel === voiceChannel.id;
+
       log.error(
         `[${this.guild.id}] Voice connection stalled in "${state}" after 20s ` +
-          `(channel ${voiceChannel.id}).`,
+          `(channel ${voiceChannel.id}). Own voice state: ` +
+          `${joined ? 'PRESENT in the channel' : `absent (channelId=${ownVoiceChannel})`}.`,
       );
-      log.error(voiceDiagnosis(state));
+      log.error(voiceDiagnosis(state, joined));
       throw new VoiceConnectError(state, { cause: err });
     }
 
@@ -385,17 +394,37 @@ export class VoiceConnectError extends Error {
  * tell those cases apart — otherwise every report looks identical and points
  * nowhere.
  */
-function voiceDiagnosis(state) {
+function voiceDiagnosis(state, joined) {
   const report = generateDependencyReport();
 
   if (state === VoiceConnectionStatus.Signalling) {
-    return [
-      'Stuck at "signalling": the join was sent but Discord never replied with',
-      'a voice server. That usually means the gateway is not delivering',
-      'VOICE_SERVER_UPDATE / VOICE_STATE_UPDATE (check the GuildVoiceStates',
-      'intent), or the bot lacks Connect on the channel.',
-      report,
-    ].join('\n');
+    // Split on whether our own voice state arrived. If the bot is visibly IN
+    // the channel then Discord accepted the join and broadcast the state, so
+    // the intent and the Connect permission are both demonstrably fine and the
+    // only missing piece is VOICE_SERVER_UPDATE.
+    const lines = joined
+      ? [
+          'Stuck at "signalling", but the bot IS in the channel — so Discord',
+          'accepted the join and VOICE_STATE_UPDATE arrived. Only',
+          'VOICE_SERVER_UPDATE never came, which rules out the usual suspects:',
+          'the GuildVoiceStates intent works and Connect is granted.',
+          '',
+          'What is left, in order of likelihood:',
+          '  1. A SECOND instance of this bot is connected on the same token.',
+          '     Discord sends the voice server reply to one session and the',
+          '     other waits forever. Check for a local `npm start`, a second',
+          '     Railway service, or an older deployment still running.',
+          '  2. A Discord voice-region incident — rare, clears on its own.',
+          '     https://discordstatus.com',
+          '  3. The channel is a Stage channel the bot cannot speak in.',
+        ]
+      : [
+          'Stuck at "signalling" and the bot never appeared in the channel, so',
+          'Discord ignored the join entirely. Check that the bot can SEE the',
+          'channel (View Channel) as well as Connect, that the channel is not',
+          'full, and that the GuildVoiceStates intent is requested.',
+        ];
+    return [...lines, report].join('\n');
   }
 
   if (state === VoiceConnectionStatus.Connecting) {

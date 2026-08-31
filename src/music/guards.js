@@ -19,7 +19,12 @@ export function requireVoiceChannel(interaction) {
 
   const me = interaction.guild.members.me;
   const permissions = channel.permissionsFor(me);
-  if (!permissions?.has(PermissionFlagsBits.Connect)) {
+  // View Channel matters as much as Connect: without it Discord ignores the
+  // join outright, and the connection stalls at "signalling" with no error.
+  if (!permissions?.has(PermissionFlagsBits.ViewChannel)) {
+    return { problem: `I cannot see **${channel.name}**.` };
+  }
+  if (!permissions.has(PermissionFlagsBits.Connect)) {
     return { problem: `I am not allowed to connect to **${channel.name}**.` };
   }
   if (!permissions.has(PermissionFlagsBits.Speak)) {
