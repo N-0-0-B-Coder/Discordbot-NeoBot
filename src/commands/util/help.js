@@ -61,10 +61,15 @@ const SECTIONS = [
     ].join('\n'),
   },
   {
-    name: '⚙️ Setup and the rest',
+    name: '⚙️ Setup',
     value: [
       '`/config` — server settings: deals API key, country, TTS limits and the',
       'error log channel. Needs **Manage Server**, and only you see the panel.',
+    ].join('\n'),
+  },
+  {
+    name: '🔧 Utilities',
+    value: [
       '`/ping` — check I am alive, and how laggy my connection is',
       '`/help` — this list',
     ].join('\n'),

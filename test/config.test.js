@@ -105,6 +105,32 @@ describe('setting validation', () => {
   });
 });
 
+describe('config modal', () => {
+  test('builds with a Label component, not a deprecated action row', async () => {
+    // TextInputBuilder#setLabel and ModalBuilder#addComponents are both
+    // deprecated: the caption moved out of the input into its own Label
+    // component. toJSON() is where a wrong shape actually fails.
+    const config = await import('../src/components/config.js');
+    let shown;
+    await config.execute({
+      isStringSelectMenu: () => true,
+      isModalSubmit: () => false,
+      values: ['itadApiKey'],
+      guildId: 'g-modal',
+      showModal: (modal) => {
+        shown = modal.toJSON();
+      },
+    });
+
+    assert.ok(shown, 'a modal should have been shown');
+    const [component] = shown.components;
+    // 18 is the Label component type; 1 was the old action row.
+    assert.equal(component.type, 18);
+    assert.ok(component.label, 'the label lives on the Label component now');
+    assert.equal(component.component.custom_id, 'value');
+  });
+});
+
 describe('config panel', () => {
   test('is ephemeral and never exposes the raw key', () => {
     gs.setSetting('gG', 'itadApiKey', 'supersecret9999');

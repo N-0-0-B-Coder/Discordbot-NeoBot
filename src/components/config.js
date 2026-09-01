@@ -17,6 +17,7 @@
 import {
   ActionRowBuilder,
   EmbedBuilder,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -146,20 +147,26 @@ async function handleSelect(interaction) {
   // Everything else takes text. A modal is the only private way to collect it —
   // a slash command option would be displayed to the whole channel, which for
   // the API key would mean leaking it.
+  //
+  // Modals no longer wrap their inputs in action rows: a Label component owns
+  // the caption instead. That is why both TextInputBuilder#setLabel and
+  // ModalBuilder#addComponents are deprecated — the label moved out of the
+  // input and into a component of its own, which can also carry a description.
   const modal = new ModalBuilder()
     .setCustomId(`${MODAL_PREFIX}:${setting.key}`)
     .setTitle(setting.label.slice(0, 45))
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId(INPUT_ID)
-          .setLabel(setting.modalLabel.slice(0, 45))
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder(setting.placeholder ?? '')
-          .setMaxLength(setting.maxLength ?? 100)
-          // Blank means "clear this override and go back to the default".
-          .setRequired(false),
-      ),
+    .setLabelComponents(
+      new LabelBuilder()
+        .setLabel(setting.modalLabel.slice(0, 45))
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId(INPUT_ID)
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder(setting.placeholder ?? '')
+            .setMaxLength(setting.maxLength ?? 100)
+            // Blank means "clear this override and go back to the default".
+            .setRequired(false),
+        ),
     );
 
   // showModal must be the FIRST response to an interaction — it cannot follow a
