@@ -4,6 +4,7 @@ import { error as errorEmbed } from '../lib/embeds.js';
 import { consume } from '../lib/cooldowns.js';
 import { findComponent } from '../lib/loaders.js';
 import { report } from '../lib/error-reporter.js';
+import { logAction, logDone, describeOptions } from '../lib/activity.js';
 
 export const name = Events.InteractionCreate;
 
@@ -11,6 +12,9 @@ export async function execute(interaction, client) {
   if (interaction.isAutocomplete()) {
     const command = client.commands.get(interaction.commandName);
     if (typeof command?.autocomplete !== 'function') return;
+    // Autocomplete fires on every keystroke, so it stays at debug — at info it
+    // would bury every other line in the log.
+    log.debug(`autocomplete /${interaction.commandName}`);
     try {
       await command.autocomplete(interaction);
     } catch (err) {
@@ -32,6 +36,13 @@ export async function execute(interaction, client) {
       log.warn(`No handler for component "${interaction.customId}".`);
       return;
     }
+    const where = {
+      user: interaction.user.tag,
+      channel: interaction.channel?.name,
+      guild: interaction.guild?.name,
+    };
+    logAction(`component ${interaction.customId}`, where);
+
     try {
       await component.execute(interaction);
     } catch (err) {
@@ -92,8 +103,17 @@ export async function execute(interaction, client) {
     return;
   }
 
+  const where = {
+    user: interaction.user.tag,
+    channel: interaction.channel?.name,
+    guild: interaction.guild?.name,
+  };
+  const startedAt = Date.now();
+  logAction(`/${interaction.commandName}`, { ...where, detail: describeOptions(interaction) });
+
   try {
     await command.execute(interaction);
+    logDone(`/${interaction.commandName}`, startedAt, where);
   } catch (err) {
     // Mirror to the error channel with enough context to actually debug it.
     report(

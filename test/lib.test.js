@@ -6,6 +6,7 @@ import { truncate, formatDuration } from '../src/lib/embeds.js';
 import { paint, green, red, highlight } from '../src/lib/colors.js';
 import { log } from '../src/lib/logger.js';
 import { describeVoiceFailure } from '../src/music/diagnose.js';
+import { describeOptions } from '../src/lib/activity.js';
 
 describe('parseDuration', () => {
   test('parses single units', () => {
@@ -138,5 +139,33 @@ describe('describeVoiceFailure', () => {
   test('falls back to the status when no phase was recorded', () => {
     const message = describeVoiceFailure({ state: 'signalling' }, 'voice');
     assert.ok(message.includes('voice server'));
+  });
+});
+
+describe('describeOptions', () => {
+  test('renders arguments compactly', () => {
+    const line = describeOptions({
+      options: { data: [{ name: 'voice', value: 'vi-VN-HoaiMyNeural' }] },
+    });
+    assert.equal(line, 'voice: vi-VN-HoaiMyNeural');
+  });
+
+  test('never writes a key-shaped value to the log', () => {
+    const line = describeOptions({
+      options: { data: [{ name: 'api_key', value: 'super-secret-value' }] },
+    });
+    assert.ok(!line.includes('super-secret-value'));
+    assert.ok(line.includes('hidden'));
+  });
+
+  test('flattens subcommand options', () => {
+    const line = describeOptions({
+      options: { data: [{ name: 'set', options: [{ name: 'country', value: 'VN' }] }] },
+    });
+    assert.equal(line, 'set country: VN');
+  });
+
+  test('an interaction with no options renders nothing', () => {
+    assert.equal(describeOptions({}), '');
   });
 });

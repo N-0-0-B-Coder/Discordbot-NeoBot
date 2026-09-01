@@ -113,6 +113,7 @@ export class GuildVoiceSession {
     });
 
     const tracer = traceVoice(this.connection);
+    const startedAt = Date.now();
 
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       // A disconnect is ambiguous: it can be a region change (recoverable) or a
@@ -162,6 +163,12 @@ export class GuildVoiceSession {
       });
     }
 
+    // A successful join used to log nothing at all, which made a working voice
+    // session and a dead one look identical in the log.
+    log.success(
+      `[${this.guild.id}] Voice ready in "${voiceChannel.name}" ` +
+        `(${Date.now() - startedAt}ms).`,
+    );
     return this.connection;
   }
 
@@ -297,6 +304,10 @@ export class GuildVoiceSession {
       });
       this.ttsCleanup = cleanup;
       this.ttsPlayer.play(createAudioResource(stream, { inputType }));
+      log.debug(
+        `[${this.guild.id}] Speaking with ${voice}` +
+          `${this.ttsQueue.length ? `, ${this.ttsQueue.length} line(s) queued` : ''}.`,
+      );
     } catch (err) {
       log.warn(`[${this.guild.id}] TTS synthesis failed:`, err);
       // Skip this line and keep the queue moving rather than wedging.

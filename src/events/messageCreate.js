@@ -3,6 +3,13 @@ import { getSetting } from '../db/guild-settings.js';
 import { log } from '../lib/logger.js';
 import { peekPlayer } from '../music/manager.js';
 import { toSpeakableText } from '../tts/sanitize.js';
+import { logAction, describeText } from '../lib/activity.js';
+
+/**
+ * Latched so the missing-intent warning below is said once, not once per
+ * message — the condition never changes without a restart.
+ */
+let warnedAboutEmptyContent = false;
 
 export const name = Events.MessageCreate;
 
@@ -35,6 +42,23 @@ export async function execute(message) {
   const speakerChannelId = message.member?.voice?.channelId;
   if (!speakerChannelId || speakerChannelId !== session.voiceChannelId) return;
 
+  // An empty `content` on a plain text message is the exact signature of a
+  // missing MESSAGE_CONTENT intent: Discord delivers the event and blanks the
+  // field rather than erroring, so TTS goes silent with nothing to read.
+  if (
+    !warnedAboutEmptyContent &&
+    message.content === '' &&
+    message.attachments.size === 0 &&
+    message.stickers.size === 0
+  ) {
+    warnedAboutEmptyContent = true;
+    log.warn(
+      'A message in the TTS channel arrived with EMPTY content. That is what a ' +
+        'missing Message Content intent looks like — enable it in the Developer ' +
+        'Portal (Bot -> Privileged Gateway Intents) and restart.',
+    );
+  }
+
   const text = toSpeakableText(
     message,
     getSetting(message.guildId, 'ttsMaxMessageLength'),
@@ -44,6 +68,13 @@ export async function execute(message) {
   const spoken = getSetting(message.guildId, 'ttsAnnounceAuthor')
     ? `${message.member.displayName} says: ${text}`
     : text;
+
+  logAction('speak', {
+    user: message.author.tag,
+    channel: message.channel?.name,
+    guild: message.guild?.name,
+    detail: describeText(text),
+  });
 
   try {
     await session.speak(spoken);
