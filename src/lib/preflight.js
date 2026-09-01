@@ -22,6 +22,7 @@ import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { ApplicationFlagsBitField, Routes } from 'discord.js';
 import { config } from './config.js';
+import { databaseIsNew } from '../db/index.js';
 import { bold, green, red, yellow } from './colors.js';
 
 const run = promisify(execFile);
@@ -109,6 +110,7 @@ async function checkBinaries(findings) {
   });
 
   checkVoiceEncryption(findings);
+  checkPersistence(findings);
 
   await probe(findings, {
     label: 'ffmpeg',
@@ -180,6 +182,52 @@ function checkVoiceEncryption(findings) {
       fix: 'Install @discordjs/voice >= 0.19, which depends on @snazzah/davey.',
     });
   }
+}
+
+/**
+ * Catches the hosted-bot failure that hides in plain sight: the database is
+ * recreated on every deploy, so every /config setting and every warning is
+ * silently gone, and the bot starts perfectly.
+ *
+ * A brand-new database is normal on a laptop and alarming on a platform that
+ * rebuilds the container each push — so only say so when there are signs of
+ * being hosted. The tell is a volume mounted somewhere OTHER than where the
+ * database is being written.
+ */
+function checkPersistence(findings) {
+  const hosted = Boolean(
+    process.env.RAILWAY_ENVIRONMENT ??
+      process.env.RAILWAY_SERVICE_ID ??
+      process.env.RENDER ??
+      process.env.FLY_APP_NAME,
+  );
+
+  if (!databaseIsNew) {
+    findings.push({ level: 'ok', title: 'Database carried over from the last run' });
+    return;
+  }
+
+  if (!hosted) {
+    findings.push({ level: 'ok', title: 'New database created (first run)' });
+    return;
+  }
+
+  findings.push({
+    level: 'error',
+    title: 'The database was EMPTY at startup, on a hosted platform',
+    detail: [
+      'Every /config setting and every infraction from the last deploy is gone.',
+      `  The bot is writing to ${config.databasePath}, which is part of the`,
+      '  container and is rebuilt on every deploy. A volume that EXISTS but is',
+      '  mounted at a different path does not help — the paths have to match.',
+    ].join('\n'),
+    fix: [
+      'Point them at each other. Either set DATABASE_PATH to the volume mount',
+      '  path (Railway: Variables -> DATABASE_PATH=/data/neobot.sqlite for a',
+      '  volume mounted at /data), or change the mount path to match the',
+      '  current one. Redeploy, and the SQLite line should say "existing".',
+    ].join('\n'),
+  });
 }
 
 function checkCodeGrant(application, findings) {

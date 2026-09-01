@@ -1,10 +1,21 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../lib/config.js';
 import { log } from '../lib/logger.js';
 
 const path = resolve(config.databasePath);
+
+/**
+ * Whether this process created the database rather than opening an existing one.
+ *
+ * Checked BEFORE the file is opened, because better-sqlite3 creates it on
+ * connect. On a hosted platform this is the difference between "the volume is
+ * working" and "every setting this server chose is gone", and until now nothing
+ * said which had happened — a fresh database looks exactly like a healthy one.
+ */
+export const databaseIsNew = !existsSync(path);
+
 mkdirSync(dirname(path), { recursive: true });
 
 export const db = new Database(path);
@@ -56,7 +67,7 @@ db.exec(`
   );
 `);
 
-log.info(`SQLite ready at ${path}`);
+log.info(`SQLite ready at ${path} ${databaseIsNew ? '(NEW database)' : '(existing database)'}`);
 
 export function closeDatabase() {
   try {

@@ -206,9 +206,21 @@ connection is not.
 
 1. Push this repo to GitHub, then **New Project → Deploy from GitHub repo**.
 2. Add every variable from your local `.env` under **Variables**.
-3. **Add a volume** mounted at `/data`, and set `DATABASE_PATH=/data/neobot.sqlite`.
-   Without a volume the container filesystem is wiped on every redeploy and the
-   whole infraction log — plus every `/config` setting — goes with it.
+3. **Add a volume, and make `DATABASE_PATH` match its mount path.** Both halves
+   are required and neither is enough alone: a volume mounted at `/data` while
+   the bot still writes to the default `./data` means the volume sits there
+   empty while the real database is rebuilt with the container every deploy.
+   Mount at `/data` and set `DATABASE_PATH=/data/neobot.sqlite`.
+
+   The startup log now says which happened, so you never have to guess:
+
+   ```
+   INFO  SQLite ready at /data/neobot.sqlite (existing database)
+   ```
+
+   `(NEW database)` on anything but a first run means the last deploy's
+   `/config` settings and infractions are gone. The startup check calls that
+   out as an error when it detects a hosting platform.
 4. `railway.json` sets the start command and restart policy; `nixpacks.toml`
    handles the build.
 5. If a **Start Command** is set in the service's dashboard settings, it
