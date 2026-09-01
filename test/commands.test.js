@@ -87,6 +87,27 @@ describe('command payloads', () => {
   });
 });
 
+describe('/help', () => {
+  test('mentions every command that exists', async () => {
+    // /help is curated rather than generated, because the most useful thing
+    // about this bot is a behaviour (chat read aloud) rather than a command
+    // name. That trade is only safe with a test holding the list honest.
+    const help = await import('../src/commands/util/help.js');
+    const listed = [];
+    let embed;
+    await help.execute({
+      reply: (payload) => {
+        [embed] = payload.embeds;
+      },
+    });
+    const text = embed.data.fields.map((field) => field.value).join(' ');
+    for (const [name] of commands) {
+      if (!text.includes(`\`/${name}\``)) listed.push(name);
+    }
+    assert.deepEqual(listed, [], `/help does not mention: ${listed.join(', ')}`);
+  });
+});
+
 describe('codebase conventions', () => {
   test('nothing uses the deprecated ephemeral flag', async () => {
     // discord.js v14.16+ deprecates `ephemeral: true` in favour of

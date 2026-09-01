@@ -7,14 +7,28 @@ export const data = new SlashCommandBuilder()
 
 export const guildOnly = false;
 
+/**
+ * Curated rather than generated from the loaded commands.
+ *
+ * A list built from `client.commands` would stay in sync for free, but it can
+ * only ever say what each command is named — and the most useful thing about
+ * this bot is a BEHAVIOUR rather than a command: once /tts-join runs, plain
+ * chat is read aloud with nothing further typed. An auto-generated list would
+ * describe the door and never mention the room.
+ *
+ * The cost is that this file has to be updated alongside a new command.
+ */
 const SECTIONS = [
   {
-    name: '🔊 Text-to-speech',
+    name: '🔊 Text-to-speech — my main trick',
     value: [
-      '`/tts-join` — I join your voice channel and read its chat aloud',
-      '`/tts-leave` — stop reading',
-      '`/tts-voice` — show, change or reset the voice I speak in',
-      '`/say` — Discord\'s own TTS, read by your client (not in voice)',
+      'Run `/tts-join` in a voice channel and I read **its own chat** aloud.',
+      'No command per message — just type in the voice channel and I speak it.',
+      '',
+      '`/tts-join` — join and start reading',
+      '`/tts-leave` — stop (I also leave on my own when the channel empties)',
+      '`/tts-voice` — show, change or reset my voice (300+ to choose from)',
+      "`/say` — Discord's own TTS, read by your client, not in voice",
     ].join('\n'),
   },
   {
@@ -23,6 +37,9 @@ const SECTIONS = [
       '`/play` — search or paste a link to queue audio',
       '`/queue` `/nowplaying` — see what is lined up',
       '`/skip` `/pause` `/resume` `/stop` `/leave` — control playback',
+      '',
+      'Music and speech share one connection: a track **pauses while I speak**,',
+      'then picks up exactly where it left off.',
     ].join('\n'),
   },
   {
@@ -40,6 +57,15 @@ const SECTIONS = [
       '`/purge` — bulk-delete recent messages',
     ].join('\n'),
   },
+  {
+    name: '⚙️ Setup and the rest',
+    value: [
+      '`/config` — server settings: deals API key, country, TTS limits and the',
+      'error log channel. Needs **Manage Server**, and only you see the panel.',
+      '`/ping` — check I am alive, and how laggy my connection is',
+      '`/help` — this list',
+    ].join('\n'),
+  },
 ];
 
 export async function execute(interaction) {
@@ -47,10 +73,13 @@ export async function execute(interaction) {
     .setColor(COLORS.info)
     .setTitle('NeoBot commands')
     .setDescription(
-      'Everything is a slash command — type `/` and Discord will filter as you go.',
+      'Everything is a slash command — type `/` and Discord will filter as you go.\n' +
+        'Only the two voice features need anything beyond typing the command.',
     )
     .addFields(SECTIONS)
-    .setFooter({ text: 'Infraction records are deleted automatically after 30 days.' });
+    .setFooter({
+      text: 'Only people in the voice channel get read aloud · Infraction records are deleted automatically after 30 days.',
+    });
 
   await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
