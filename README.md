@@ -248,9 +248,22 @@ never wipe them.
 
 ### Voice does not work on Railway
 
-Confirmed 2026-09-01: the bot joins a voice channel, never reaches the Ready
-state, and aborts after 20 seconds. Everything else — commands, moderation,
-game lookups — works fine.
+**Confirmed by evidence 2026-09-01.** The bot joins a voice channel, never
+reaches Ready, and aborts after 20 seconds. Everything else — commands,
+moderation, game lookups — works fine.
+
+The proof is the state path, which the connection now logs:
+
+```
+State path: signalling -> connecting -> connecting -> signalling
+```
+
+Reaching `connecting` means Discord **did** send a voice server, so the
+gateway, the `GuildVoiceStates` intent and the Connect permission are all
+fine. What fails is reaching that server — the UDP handshake — after which
+`@discordjs/voice` retries, cycling back through `signalling`. That retry is
+why the *final* state is misleading and why the transition path is the thing
+to read.
 
 The cause is the network, not the code. Discord signals voice over WebSocket
 but carries the **audio over UDP** on a high port, and Railway does not appear
@@ -270,9 +283,15 @@ separates the two causes:
 **To confirm it is the host, run the bot locally and try the same command.** If
 it works there, the code is fine.
 
-**Hosts that do carry voice:** a plain VPS (any provider), Fly.io, or Oracle
-Cloud's free tier. If voice matters, run the bot there; Railway remains fine for
-a text-only deployment.
+**Hosts that do carry voice:** a plain VPS from any provider is the safe
+choice — it is an ordinary Linux box with a public IP and no egress filtering.
+Hetzner, Contabo and DigitalOcean all land in the $4–6/month range, which fits
+the original budget for this project. Oracle Cloud's always-free VM works too
+and costs nothing, though signup is fiddly.
+
+Splitting the bot — text on Railway, voice elsewhere — is **not** an option:
+two instances on one token both receive commands and fight over voice, which
+is its own broken state. It runs in one place or the other.
 
 **On Replit:** workable, but the free tier sleeps on inactivity and a sleeping
 bot drops its gateway connection. It has the same UDP question besides.
