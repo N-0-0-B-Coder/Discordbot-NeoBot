@@ -12,8 +12,12 @@
 #    preinstall Python check is then genuinely vestigial and is skipped.
 #
 #    Both variables must also be present at RUNTIME, because the package
-#    resolves the binary's path from them — `[variables]` become ENV in the
-#    built image, so they are.
+#    resolves the binary's path from them. CORRECTION (2026-09-01): nixpacks
+#    `[variables]` do NOT reach the runtime environment — the deployed bot
+#    still looked for `bin/yt-dlp` and failed. They must be set as RAILWAY
+#    SERVICE VARIABLES, which apply to both build and runtime. The block below
+#    is kept so a local `nixpacks build` behaves the same, but the service
+#    variables are what actually make it work.
 #
 # 2. NO BUILD STEP
 #    Nixpacks otherwise picks up `npm run deploy` as the build command.

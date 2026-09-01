@@ -110,6 +110,16 @@ export class GuildVoiceSession {
       selfDeaf: true,
     });
 
+    // Record every state transition, because the state at timeout is a snapshot
+    // of a state machine that RETRIES: a failed voice websocket or UDP handshake
+    // sends it back to Signalling, so "stalled in signalling" can equally mean
+    // "never got a voice server" or "got one and could not reach it, twice".
+    // Only the sequence tells those apart.
+    const transitions = [];
+    this.connection.on('stateChange', (previous, next) => {
+      transitions.push(next.status);
+    });
+
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       // A disconnect is ambiguous: it can be a region change (recoverable) or a
       // real kick/leave. Race the two states to tell them apart.
@@ -147,7 +157,10 @@ export class GuildVoiceSession {
           `(channel ${voiceChannel.id}). Own voice state: ` +
           `${joined ? 'PRESENT in the channel' : `absent (channelId=${ownVoiceChannel})`}.`,
       );
-      log.error(voiceDiagnosis(state, joined));
+      log.error(
+        `[${this.guild.id}] State path: ${transitions.join(' -> ') || '(none recorded)'}`,
+      );
+      log.error(voiceDiagnosis(state, joined, transitions));
       throw new VoiceConnectError(state, { cause: err });
     }
 
@@ -394,8 +407,28 @@ export class VoiceConnectError extends Error {
  * tell those cases apart — otherwise every report looks identical and points
  * nowhere.
  */
-function voiceDiagnosis(state, joined) {
+function voiceDiagnosis(state, joined, transitions = []) {
   const report = generateDependencyReport();
+
+  // Reaching Connecting at any point means Discord DID send a voice server —
+  // so the signalling we end on is a retry, not a stall, and the failure is in
+  // reaching the voice server itself. That is the UDP/egress case.
+  if (transitions.includes(VoiceConnectionStatus.Connecting)) {
+    return [
+      `Reached "connecting" before falling back — path: ${transitions.join(' -> ')}.`,
+      '',
+      'Discord DID send a voice server, so the gateway, the intent and the',
+      'permissions are all fine. The failure is reaching that voice server:',
+      'the handshake needs OUTBOUND UDP to a high port, and the retries cycle',
+      'back through "signalling", which is why the final state is misleading.',
+      '',
+      'This is a host networking limit, not a bug in the bot. Hosts that block',
+      'or do not route outbound UDP cannot carry Discord voice at all; text',
+      'commands are unaffected. Run the bot somewhere else to confirm — a VPS,',
+      'Fly.io and Oracle Cloud all route UDP.',
+      report,
+    ].join('\n');
+  }
 
   if (state === VoiceConnectionStatus.Signalling) {
     // Split on whether our own voice state arrived. If the bot is visibly IN
@@ -404,19 +437,21 @@ function voiceDiagnosis(state, joined) {
     // only missing piece is VOICE_SERVER_UPDATE.
     const lines = joined
       ? [
-          'Stuck at "signalling", but the bot IS in the channel — so Discord',
-          'accepted the join and VOICE_STATE_UPDATE arrived. Only',
-          'VOICE_SERVER_UPDATE never came, which rules out the usual suspects:',
-          'the GuildVoiceStates intent works and Connect is granted.',
+          'Never left "signalling", and the bot IS in the channel — so Discord',
+          'accepted the join and VOICE_STATE_UPDATE arrived, but',
+          'VOICE_SERVER_UPDATE genuinely never did. The GuildVoiceStates intent',
+          'and the Connect permission are therefore both fine.',
           '',
           'What is left, in order of likelihood:',
-          '  1. A SECOND instance of this bot is connected on the same token.',
-          '     Discord sends the voice server reply to one session and the',
-          '     other waits forever. Check for a local `npm start`, a second',
-          '     Railway service, or an older deployment still running.',
-          '  2. A Discord voice-region incident — rare, clears on its own.',
+          '  1. A SECOND instance connected on the same token. Discord sends',
+          '     the voice server reply to one session and the other waits.',
+          '     Check for a local `npm start`, a second Railway service, or an',
+          '     older deployment still running.',
+          '  2. Outbound traffic to Discord voice endpoints is blocked so early',
+          '     that the library never advances. Test by running the bot on a',
+          '     different network.',
+          '  3. A Discord voice-region incident — rare, clears on its own.',
           '     https://discordstatus.com',
-          '  3. The channel is a Stage channel the bot cannot speak in.',
         ]
       : [
           'Stuck at "signalling" and the bot never appeared in the channel, so',

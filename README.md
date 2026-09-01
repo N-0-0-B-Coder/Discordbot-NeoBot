@@ -221,10 +221,17 @@ which is a Python *zipapp* (~3 MB) needing a system Python to run. Windows gets
 Skipping the check with `YOUTUBE_DL_SKIP_PYTHON_CHECK` would let the build pass
 and then fail on the first `/play`. `nixpacks.toml` installs `python3` instead.
 
-*Leaner alternative:* set `YOUTUBE_DL_FILENAME=yt-dlp_linux` and
-`YOUTUBE_DL_SKIP_PYTHON_CHECK=1` to fetch the 40 MB standalone build, which
-embeds its own Python. Both variables must then be present at **runtime** as
-well, since the package resolves the binary path from them.
+**Set these two as Railway service variables:**
+
+```
+YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+YOUTUBE_DL_FILENAME=yt-dlp_linux
+```
+
+That fetches the 40 MB standalone build, which embeds its own Python. Both are
+needed at **runtime** as well as build time, because the package resolves the
+binary's path from them — and nixpacks `[variables]` do **not** reach the
+runtime environment, which is why putting them there alone did not work.
 
 **No build step.** Nixpacks otherwise picks up `npm run deploy` as the build
 command. Registering slash commands during a build needs `DISCORD_TOKEN` at

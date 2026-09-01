@@ -99,9 +99,13 @@ async function checkBinaries(findings) {
     resolve: () => require('youtube-dl-exec/src/constants.js').YOUTUBE_DL_PATH,
     args: ['--version'],
     hint:
-      'On Linux this binary is a Python zipapp and needs python3 >= 3.9 on the\n' +
-      '  host. nixpacks.toml installs it for Railway; other hosts need the same,\n' +
-      '  or set YOUTUBE_DL_FILENAME=yt-dlp_linux to fetch the standalone build.',
+      'On Linux the default asset is a Python zipapp whose shebang resolves\n' +
+      '  python3 from PATH at RUNTIME, so a build-time Python does not help.\n' +
+      '  Fetch the standalone build instead, which embeds its own interpreter.\n' +
+      '  Set BOTH as platform variables (not in nixpacks.toml — those do not\n' +
+      '  reach the runtime environment), then redeploy:\n' +
+      '      YOUTUBE_DL_SKIP_PYTHON_CHECK=1\n' +
+      '      YOUTUBE_DL_FILENAME=yt-dlp_linux',
   });
 
   await probe(findings, {
