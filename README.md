@@ -211,6 +211,20 @@ connection is not.
    whole infraction log — plus every `/config` setting — goes with it.
 4. `railway.json` sets the start command and restart policy; `nixpacks.toml`
    handles the build.
+5. If a **Start Command** is set in the service's dashboard settings, it
+   silently overrides `railway.json`. Leave it empty.
+
+**The start command runs `node src/index.js`, not `npm start`**, so that
+SIGTERM reaches the app. With npm in between, the signal stopped there and the
+process was killed outright — the graceful shutdown never ran, so the bot never
+left its voice channel and SQLite was never closed cleanly. The giveaway in the
+deploy log is npm reporting its own death as a failure:
+
+```
+npm error signal SIGTERM
+```
+
+A clean shutdown logs `Received SIGTERM, shutting down.` instead.
 
 ### Why `nixpacks.toml` exists
 
@@ -246,52 +260,51 @@ Run `npm run deploy` once locally (or as a one-off Railway command) after the
 first deploy — the bot never registers commands at startup, so a crash loop can
 never wipe them.
 
-### Voice does not work on Railway
+### Voice: DAVE encryption is required (this cost an evening)
 
-**Confirmed by evidence 2026-09-01.** The bot joins a voice channel, never
-reaches Ready, and aborts after 20 seconds. Everything else — commands,
-moderation, game lookups — works fine.
+**Symptom.** The bot joins the voice channel, never reaches Ready, and aborts
+after 20 seconds. Every other feature works perfectly.
 
-The proof is the state path, which the connection now logs:
+**Cause.** Discord made end-to-end encryption — the **DAVE protocol** —
+mandatory on all non-stage voice channels on 2 March 2026. `@discordjs/voice`
+0.18 has no DAVE support at all, so it identifies with
+`max_dave_protocol_version: 0` and the voice websocket is closed immediately
+with **close code 4017**. The fix is `@discordjs/voice` >= 0.19, which depends
+on `@snazzah/davey` (prebuilt binaries, no toolchain). `npm run doctor` checks
+it:
 
 ```
-State path: signalling -> connecting -> connecting -> signalling
+[ ok ] Voice E2EE available (DAVE protocol v1)
 ```
 
-Reaching `connecting` means Discord **did** send a voice server, so the
-gateway, the `GuildVoiceStates` intent and the Connect permission are all
-fine. What fails is reaching that server — the UDP handshake — after which
-`@discordjs/voice` retries, cycling back through `signalling`. That retry is
-why the *final* state is misleading and why the transition path is the thing
-to read.
+**Why it looked like a hosting problem.** `VoiceConnection` exposes four coarse
+statuses and it *retries*, so any failure inside the handshake rewinds it to
+`signalling`. The status at the timeout describes the retry, not the fault.
+That produced four confident wrong diagnoses in a row — the last one being
+"Railway does not route outbound UDP", which was wrong and is now retracted.
+Railway carries voice fine.
 
-The cause is the network, not the code. Discord signals voice over WebSocket
-but carries the **audio over UDP** on a high port, and Railway does not appear
-to route outbound UDP. Others have hit the same thing with no resolution:
-<https://station.railway.com/questions/discord-voice-udp-connections-failing-502e2d88>
+**What the log tells you now.** The failure path is traced at the level that
+actually distinguishes causes — the deepest `Networking` phase reached, plus
+the websocket close code:
 
-The dependency side is ruled out — `npm run doctor` prints the voice dependency
-report, and encryption (`libsodium-wrappers`) plus ffmpeg-with-libopus are both
-present. On a failure the log names the exact state it stalled in, which
-separates the two causes:
-
-| Stalled in | Means |
+| Deepest phase | Means |
 | --- | --- |
-| `signalling` | Discord never sent a voice server — check the Connect permission and the `GuildVoiceStates` intent |
-| `connecting` | Discord replied but the UDP handshake never completed — the host is blocking UDP |
+| opening the websocket | cannot reach the voice endpoint — DNS or outbound TCP/443 |
+| identifying | Discord closed the session — **read the close code** (4017 = DAVE, 4006 = second instance on the same token, 4004 = token refused) |
+| UDP handshake | IP discovery got no reply — *this* is the genuine blocked-UDP case |
+| selecting protocol | encryption negotiation failed |
 
-**To confirm it is the host, run the bot locally and try the same command.** If
-it works there, the code is fine.
+**The lesson worth keeping.** When a diagnosis blames the environment,
+reproduce it in a different environment before acting on it. One local
+`npm start` on a home connection falsified every host-related hypothesis in a
+single step — and it should have been the first test, not the last.
 
-**Hosts that do carry voice:** a plain VPS from any provider is the safe
-choice — it is an ordinary Linux box with a public IP and no egress filtering.
-Hetzner, Contabo and DigitalOcean all land in the $4–6/month range, which fits
-the original budget for this project. Oracle Cloud's always-free VM works too
-and costs nothing, though signup is fiddly.
-
-Splitting the bot — text on Railway, voice elsewhere — is **not** an option:
-two instances on one token both receive commands and fight over voice, which
-is its own broken state. It runs in one place or the other.
+**Only ever run one instance.** Two copies on one token both receive every
+command and fight over voice. Note that a local `npm start` while Railway is
+deployed *is* two instances: they race for each interaction and the loser logs
+`40060 Interaction has already been acknowledged`. Stop the service before
+testing locally.
 
 **On Replit:** workable, but the free tier sleeps on inactivity and a sleeping
 bot drops its gateway connection. It has the same UDP question besides.
