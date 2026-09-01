@@ -53,11 +53,19 @@ export async function execute(interaction) {
   }
 
   const name = deals?.game?.title ?? steamGame?.name ?? title;
+
+  // Name the sources that actually answered, not the ones the command can use.
+  // Either half may be unconfigured or simply fail, and a footer that always
+  // claims both turns the embed into its own contradiction — it credited
+  // IsThereAnyDeal directly under a note saying no ITAD key was set.
+  const sources = [deals && 'IsThereAnyDeal', steamGame && 'Steam'].filter(Boolean);
   const embed = new EmbedBuilder()
     .setColor(COLORS.deal)
     .setTitle(truncate(name, 250))
     .setFooter({
-      text: `Prices in ${getSetting(interaction.guildId, 'priceCountry')} · IsThereAnyDeal + Steam`,
+      text:
+        `Prices in ${getSetting(interaction.guildId, 'priceCountry')}` +
+        ` · ${sources.join(' + ')}`,
     });
 
   const art =
