@@ -533,6 +533,7 @@ const CLOSE_CODES = {
   4014: 'disconnected — channel deleted, kicked, or moved',
   4015: 'the voice server crashed',
   4016: 'unknown encryption mode',
+  4017: 'this channel requires end-to-end encryption via the DAVE protocol',
   1006: 'the connection dropped without a close frame',
 };
 
@@ -550,6 +551,21 @@ function phaseAdvice(phase, closeCode) {
       '',
       'Confirm by running the bot on a different network. A VPS, Fly.io and',
       'Oracle Cloud all route UDP.',
+    ];
+  }
+
+  if (phase === 1 && closeCode === 4017) {
+    return [
+      'Discord closed the session with 4017: the channel requires end-to-end',
+      'encryption via the DAVE protocol, which this build cannot speak. Since',
+      'the March 2026 enforcement every non-stage voice channel demands it, so',
+      'the bot identifies with max_dave_protocol_version: 0 and is refused.',
+      '',
+      'Nothing about the network, the host, the intents or the permissions is',
+      'involved. Fix it in one place:',
+      '  @discordjs/voice must be >= 0.19, which depends on @snazzah/davey.',
+      '  Earlier versions have no DAVE support at all — check the report below',
+      '  for a "DAVE Libraries" section; if it is missing, that is the cause.',
     ];
   }
 

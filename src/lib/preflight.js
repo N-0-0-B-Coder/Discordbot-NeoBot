@@ -108,6 +108,8 @@ async function checkBinaries(findings) {
       '      YOUTUBE_DL_FILENAME=yt-dlp_linux',
   });
 
+  checkVoiceEncryption(findings);
+
   await probe(findings, {
     label: 'ffmpeg',
     usedBy: 'all audio — music and TTS',
@@ -146,6 +148,36 @@ async function probe(findings, { label, usedBy, resolve, args, hint }) {
       title: `${label} will not run`,
       detail: `Needed by ${usedBy}.\n  ${String(err.message).split('\n')[0]}`,
       fix: hint,
+    });
+  }
+}
+
+/**
+ * Confirms the bot can speak DAVE, Discord's voice end-to-end encryption.
+ *
+ * Since the March 2026 enforcement, every non-stage voice channel requires it.
+ * A bot without it identifies with `max_dave_protocol_version: 0`, and the
+ * voice websocket is closed with 4017 — but only at the moment someone runs a
+ * voice command, and the connection then RETRIES, so the visible symptom is a
+ * generic "stalled" timeout that looks exactly like a blocked network. That
+ * mislead cost an evening; a startup line costs nothing.
+ */
+function checkVoiceEncryption(findings) {
+  try {
+    const { DAVE_PROTOCOL_VERSION } = require('@snazzah/davey');
+    findings.push({
+      level: 'ok',
+      title: `Voice E2EE available (DAVE protocol v${DAVE_PROTOCOL_VERSION})`,
+    });
+  } catch {
+    findings.push({
+      level: 'error',
+      title: 'Voice end-to-end encryption (DAVE) is unavailable',
+      detail:
+        'Discord requires DAVE on every non-stage voice channel. Without it,\n' +
+        '  the voice websocket is closed with code 4017 the moment the bot\n' +
+        '  tries to join — and the retry makes it look like a network stall.',
+      fix: 'Install @discordjs/voice >= 0.19, which depends on @snazzah/davey.',
     });
   }
 }

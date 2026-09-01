@@ -124,6 +124,17 @@ describe('describeVoiceFailure', () => {
     assert.ok(message.includes('4006'));
   });
 
+  test('4017 names the real cause instead of blaming a second instance', () => {
+    // The failure that started all this: DAVE was not supported, but the
+    // message told users a second bot was running on the same token.
+    const message = describeVoiceFailure(
+      { state: 'signalling', phase: 1, closeCode: 4017 },
+      'voice',
+    );
+    assert.ok(message.includes('end-to-end encryption'));
+    assert.ok(!message.includes('second copy'));
+  });
+
   test('falls back to the status when no phase was recorded', () => {
     const message = describeVoiceFailure({ state: 'signalling' }, 'voice');
     assert.ok(message.includes('voice server'));

@@ -33,6 +33,17 @@ export function describeVoiceFailure(err, channelName) {
       ].join('\n');
     }
 
+    if (phase === 1 && err?.closeCode === 4017) {
+      return [
+        `I cannot join **${channelName}** with the version of the voice`,
+        'library I am running.',
+        '',
+        'Discord now requires end-to-end encryption (the DAVE protocol) on',
+        'every voice channel, and this build does not support it. Nothing you',
+        'can change will help — whoever runs the bot needs to update it.',
+      ].join('\n');
+    }
+
     if (phase === 1) {
       return [
         `I could not finish connecting to **${channelName}**.`,
