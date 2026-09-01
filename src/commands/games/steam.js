@@ -1,8 +1,8 @@
 import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
-import { getSetting } from '../../db/guild-settings.js';
 import { log } from '../../lib/logger.js';
 import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as steam from '../../services/steam.js';
+import { applyWatchOption, watchOption, priceFooter } from './watch-option.js';
 
 export const data = new SlashCommandBuilder()
   .setName('steam')
@@ -14,7 +14,8 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
       .setAutocomplete(true)
       .setMaxLength(120),
-  );
+  )
+  .addChannelOption(watchOption);
 
 export async function autocomplete(interaction) {
   const query = interaction.options.getFocused();
@@ -91,9 +92,7 @@ export async function execute(interaction) {
         inline: true,
       },
     )
-    .setFooter({
-      text: `Steam store · prices in ${getSetting(interaction.guildId, 'priceCountry')}`,
-    });
+    .setFooter({ text: priceFooter(interaction.guildId, ['Steam']) });
 
   if (game.metacritic) {
     embed.addFields({
@@ -112,6 +111,13 @@ export async function execute(interaction) {
       inline: true,
     });
   }
+
+  const watchNote = await applyWatchOption(interaction, {
+    source: 'steam',
+    ref: game.appId,
+    title: game.name,
+  });
+  if (watchNote) embed.addFields({ name: '🔔 Price watch', value: watchNote });
 
   await interaction.editReply({ embeds: [embed] });
 }

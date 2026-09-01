@@ -72,6 +72,10 @@ export async function getAppDetails(guildId, appId) {
           initial: price.initial_formatted || price.final_formatted,
           final: price.final_formatted,
           currency: price.currency,
+          // The formatted strings are for humans; price watching needs to
+          // COMPARE prices, and "$4.99" does not subtract. Steam sends money as
+          // integer minor units (1999 = $19.99).
+          amount: typeof price.final === 'number' ? price.final / 100 : null,
         }
       : null,
     developers: data.developers ?? [],

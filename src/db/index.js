@@ -29,6 +29,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_infractions_lookup
     ON infractions (guild_id, user_id, created_at DESC);
 
+  CREATE TABLE IF NOT EXISTS price_watches (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id      TEXT    NOT NULL,
+    channel_id    TEXT    NOT NULL,
+    source        TEXT    NOT NULL CHECK (source IN ('itad','steam')),
+    ref           TEXT    NOT NULL,
+    title         TEXT    NOT NULL,
+    last_amount   REAL,
+    last_currency TEXT,
+    last_shop     TEXT,
+    created_by    TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    checked_at    INTEGER
+  );
+
+  -- One watch per game per server: asking twice moves the report channel
+  -- rather than doubling the reports.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_price_watches_game
+    ON price_watches (guild_id, source, ref);
+
   CREATE TABLE IF NOT EXISTS guild_settings (
     guild_id   TEXT PRIMARY KEY,
     tts_voice  TEXT,

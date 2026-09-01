@@ -17,10 +17,23 @@ We collect the following data when you use the Bot:
 - **User Roles:** Your roles within the Discord server
 - **Chat Logs:** Historical message data for functionality
 - **Timestamps:** When messages were sent
+- **Server Configuration:** Settings chosen with `/config`, and any price
+  watches created with `/deals` or `/steam` — including the ID of the user who
+  created each watch
 
 ## 3. Data Retention & Deletion
 
-All collected data is automatically deleted after 30 days. We do not retain personal data beyond this period. Data is deleted permanently and cannot be recovered by users or the operator.
+Personal data collected in the course of using the Bot is automatically deleted
+after 30 days. We do not retain it beyond this period, and deletion is permanent.
+
+**Server configuration is the exception, and is retained until removed.** Server
+settings and price watches are not time-limited data about a person; they are
+choices a server has made, and expiring them silently would break the feature
+they configure. They are deleted when:
+
+- the setting is reset or the watch is cancelled (`/config`, `/pricewatch remove`);
+- the channel a watch reports to is deleted, which cancels that watch; or
+- the Bot is removed from the server.
 
 ## 4. Legal Basis for Processing (GDPR & CCPA)
 

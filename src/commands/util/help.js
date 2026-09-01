@@ -47,6 +47,9 @@ const SECTIONS = [
     value: [
       '`/deals` — cheapest price across Steam, Epic, GOG, Humble and friends',
       '`/steam` — Steam store page details for one game',
+      '',
+      'Both take an optional **watch** channel: pick one and I post there',
+      'whenever that price changes. `/pricewatch` lists and cancels them.',
     ].join('\n'),
   },
   {

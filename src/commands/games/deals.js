@@ -4,6 +4,7 @@ import { log } from '../../lib/logger.js';
 import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as itad from '../../services/itad.js';
 import * as steam from '../../services/steam.js';
+import { applyWatchOption, watchOption, priceFooter } from './watch-option.js';
 
 export const data = new SlashCommandBuilder()
   .setName('deals')
@@ -14,7 +15,8 @@ export const data = new SlashCommandBuilder()
       .setDescription('Game title')
       .setRequired(true)
       .setMaxLength(120),
-  );
+  )
+  .addChannelOption(watchOption);
 
 // Steam's storefront is IP rate-limited (~200 req / 5 min) and the ITAD key has
 // a quota — both are shared by everyone in the server, so one person mashing
@@ -62,11 +64,7 @@ export async function execute(interaction) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.deal)
     .setTitle(truncate(name, 250))
-    .setFooter({
-      text:
-        `Prices in ${getSetting(interaction.guildId, 'priceCountry')}` +
-        ` · ${sources.join(' + ')}`,
-    });
+    .setFooter({ text: priceFooter(interaction.guildId, sources) });
 
   const art =
     deals?.game?.assets?.boxart ?? deals?.game?.assets?.banner300 ?? steamGame?.headerImage;
@@ -123,6 +121,15 @@ export async function execute(interaction) {
         'An admin can add an ITAD key with `/config` to compare Epic, GOG, Humble, Fanatical and the rest.',
     });
   }
+
+  // Watching is opt-in per invocation: the same lookup you just ran, repeated
+  // in the background, reported to a channel you name.
+  const watchNote = await applyWatchOption(interaction, {
+    source: deals ? 'itad' : 'steam',
+    ref: deals ? deals.game?.id : steamGame?.appId,
+    title: name,
+  });
+  if (watchNote) embed.addFields({ name: '🔔 Price watch', value: watchNote });
 
   await interaction.editReply({ embeds: [embed] });
 }

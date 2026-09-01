@@ -260,6 +260,26 @@ Run `npm run deploy` once locally (or as a one-off Railway command) after the
 first deploy — the bot never registers commands at startup, so a crash loop can
 never wipe them.
 
+### Price watches
+
+`/deals` and `/steam` both take an optional **watch** channel. Picking one saves
+the game and reports to that channel whenever the price moves — `/pricewatch`
+lists and cancels them (Manage Channels required for both).
+
+Three rules the implementation is built around:
+
+- **The first check never announces.** It records the price, so creating a watch
+  cannot immediately report a "change" from nothing to the current price.
+- **A watch pointing at a deleted channel is dropped**, not retried forever with
+  nowhere to report.
+- **An unreadable price is not a change.** A store outage records nothing and
+  keeps the last known price, so it can never announce "now free".
+
+The sweep runs every 6 hours, spaced 1.5s per game, and deliberately **not at
+boot** — on a platform that redeploys on every push, a boot sweep would be a
+burst of API calls and notifications each time. One API call per watch per
+sweep, capped at 25 watches per server.
+
 ### Voice: DAVE encryption is required (this cost an evening)
 
 **Symptom.** The bot joins the voice channel, never reaches Ready, and aborts

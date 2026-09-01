@@ -8,6 +8,7 @@ import { loadCommands, loadComponents, loadEvents } from './lib/loaders.js';
 import { closeDatabase } from './db/index.js';
 import { purgeExpiredInfractions } from './db/infractions.js';
 import { destroyAllPlayers } from './music/manager.js';
+import { sweepPriceWatches } from './services/price-watch.js';
 import { attachClient, report } from './lib/error-reporter.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -71,12 +72,26 @@ sweepRetention();
 const retentionTimer = setInterval(sweepRetention, RETENTION_SWEEP_MS);
 retentionTimer.unref();
 
+// Price watches: re-check saved games and report movement. Six hours is a
+// compromise between noticing a sale and burning the ITAD quota — store prices
+// change on a scale of days, and every watch costs one API call per sweep.
+//
+// NOT run at boot: a redeploy would then re-check everything at once, and on a
+// platform that redeploys on every push that is both a burst of API calls and a
+// burst of notifications. The first sweep happens six hours in.
+const PRICE_SWEEP_MS = 6 * 60 * 60 * 1000;
+const priceTimer = setInterval(() => {
+  sweepPriceWatches(client).catch((err) => report('price watch sweep', err));
+}, PRICE_SWEEP_MS);
+priceTimer.unref();
+
 let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info(`Received ${signal}, shutting down.`);
   clearInterval(retentionTimer);
+  clearInterval(priceTimer);
   destroyAllPlayers();
   await client.destroy();
   closeDatabase();
