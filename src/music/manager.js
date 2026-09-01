@@ -110,15 +110,7 @@ export class GuildVoiceSession {
       selfDeaf: true,
     });
 
-    // Record every state transition, because the state at timeout is a snapshot
-    // of a state machine that RETRIES: a failed voice websocket or UDP handshake
-    // sends it back to Signalling, so "stalled in signalling" can equally mean
-    // "never got a voice server" or "got one and could not reach it, twice".
-    // Only the sequence tells those apart.
-    const transitions = [];
-    this.connection.on('stateChange', (previous, next) => {
-      transitions.push(next.status);
-    });
+    const tracer = traceVoice(this.connection);
 
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       // A disconnect is ambiguous: it can be a region change (recoverable) or a
@@ -157,11 +149,15 @@ export class GuildVoiceSession {
           `(channel ${voiceChannel.id}). Own voice state: ` +
           `${joined ? 'PRESENT in the channel' : `absent (channelId=${ownVoiceChannel})`}.`,
       );
-      log.error(
-        `[${this.guild.id}] State path: ${transitions.join(' -> ') || '(none recorded)'}`,
-      );
-      log.error(voiceDiagnosis(state, joined, transitions));
-      throw new VoiceConnectError(state, { cause: err });
+      log.error(`[${this.guild.id}] Path: ${tracer.path() || '(none recorded)'}`);
+      log.error(voiceDiagnosis(state, joined, tracer));
+      // The status alone is misleading (the handshake rewinds on retry), so
+      // carry the phase too — that is what the user-facing message keys on.
+      throw new VoiceConnectError(state, {
+        cause: err,
+        phase: tracer.phase,
+        closeCode: tracer.closeCodes[0] ?? null,
+      });
     }
 
     return this.connection;
@@ -392,10 +388,14 @@ export class GuildVoiceSession {
 
 /** Thrown when a voice connection never reaches Ready, carrying the stuck state. */
 export class VoiceConnectError extends Error {
-  constructor(state, options) {
+  constructor(state, { phase = null, closeCode = null, ...options } = {}) {
     super(`Voice connection stalled in "${state}"`, options);
     this.name = 'VoiceConnectError';
     this.state = state;
+    /** Deepest `@discordjs/voice` Networking phase reached, or null. */
+    this.phase = phase;
+    /** First voice websocket close code seen, or null. */
+    this.closeCode = closeCode;
   }
 }
 
@@ -407,25 +407,24 @@ export class VoiceConnectError extends Error {
  * tell those cases apart — otherwise every report looks identical and points
  * nowhere.
  */
-function voiceDiagnosis(state, joined, transitions = []) {
+function voiceDiagnosis(state, joined, tracer) {
   const report = generateDependencyReport();
+  const { phase, closeCodes } = tracer;
 
-  // Reaching Connecting at any point means Discord DID send a voice server —
-  // so the signalling we end on is a retry, not a stall, and the failure is in
-  // reaching the voice server itself. That is the UDP/egress case.
-  if (transitions.includes(VoiceConnectionStatus.Connecting)) {
+  // The connection-level status is too coarse to diagnose anything: a failure
+  // anywhere inside the voice handshake sends it back to Signalling, so all
+  // four very different causes below end up looking identical. The networking
+  // phase reached, plus the websocket close code, is what actually separates
+  // them — see the PHASES table.
+  if (phase !== null) {
+    const closing = closeCodes.length
+      ? `The voice websocket closed with code ${closeCodes.join(', then ')} (${describeCloseCode(closeCodes[0])}).`
+      : 'The voice websocket never closed — it simply stopped progressing.';
+
     return [
-      `Reached "connecting" before falling back — path: ${transitions.join(' -> ')}.`,
+      `Deepest phase reached: ${PHASES[phase]}. ${closing}`,
       '',
-      'Discord DID send a voice server, so the gateway, the intent and the',
-      'permissions are all fine. The failure is reaching that voice server:',
-      'the handshake needs OUTBOUND UDP to a high port, and the retries cycle',
-      'back through "signalling", which is why the final state is misleading.',
-      '',
-      'This is a host networking limit, not a bug in the bot. Hosts that block',
-      'or do not route outbound UDP cannot carry Discord voice at all; text',
-      'commands are unaffected. Run the bot somewhere else to confirm — a VPS,',
-      'Fly.io and Oracle Cloud all route UDP.',
+      ...phaseAdvice(phase, closeCodes[0]),
       report,
     ].join('\n');
   }
@@ -462,17 +461,129 @@ function voiceDiagnosis(state, joined, transitions = []) {
     return [...lines, report].join('\n');
   }
 
-  if (state === VoiceConnectionStatus.Connecting) {
+  return report;
+}
+
+/**
+ * The phases inside `@discordjs/voice`'s Networking state machine, in order.
+ * The index IS the library's status code, so `PHASES[code]` names it.
+ */
+const PHASES = [
+  'opening the voice websocket',
+  'identifying (websocket open, credentials sent)',
+  'UDP handshake (IP discovery)',
+  'selecting the protocol/encryption mode',
+  'ready',
+  'resuming',
+  'closed',
+];
+
+/**
+ * Watches a connection and records how far the voice handshake actually got.
+ *
+ * `VoiceConnection` exposes only four coarse statuses, and it RETRIES: any
+ * failure inside the handshake rewinds it to Signalling, so the state at
+ * timeout describes the retry rather than the fault. The Networking instance
+ * underneath has the detail — which phase it reached, and the websocket close
+ * code — so this listens there and keeps the high-water mark.
+ */
+function traceVoice(connection) {
+  const path = [connection.state.status];
+  const closeCodes = [];
+  let phase = null;
+  let watched = null;
+
+  const push = (entry) => {
+    if (path[path.length - 1] !== entry) path.push(entry);
+  };
+
+  connection.on('stateChange', (previous, next) => {
+    const networking = next.networking ?? null;
+
+    if (networking && networking !== watched) {
+      watched = networking;
+      networking.on('close', (code) => closeCodes.push(code ?? '(none)'));
+      networking.on('error', (err) => push(`ws-error(${err?.message ?? err})`));
+    }
+
+    const code = networking?.state?.code;
+    if (typeof code === 'number') {
+      // 5 (resuming) and 6 (closed) are outcomes, not progress.
+      if (code < 5 && (phase === null || code > phase)) phase = code;
+      push(`${next.status}:${PHASES[code] ?? code}`);
+    } else {
+      push(next.status);
+    }
+  });
+
+  return { closeCodes, path: () => path.join(' -> '), get phase() { return phase; } };
+}
+
+/** Voice websocket close codes, from Discord's voice gateway documentation. */
+const CLOSE_CODES = {
+  4001: 'unknown opcode',
+  4002: 'failed to decode payload',
+  4003: 'not authenticated',
+  4004: 'authentication failed — the voice token was rejected',
+  4005: 'already authenticated',
+  4006: 'session is no longer valid',
+  4009: 'session timed out',
+  4011: 'server not found',
+  4012: 'unknown protocol',
+  4014: 'disconnected — channel deleted, kicked, or moved',
+  4015: 'the voice server crashed',
+  4016: 'unknown encryption mode',
+  1006: 'the connection dropped without a close frame',
+};
+
+const describeCloseCode = (code) => CLOSE_CODES[code] ?? 'unrecognised close code';
+
+/** What to check, given how far the handshake got and how it ended. */
+function phaseAdvice(phase, closeCode) {
+  if (phase >= 2) {
     return [
-      'Stuck at "connecting": Discord answered, but the UDP handshake never',
-      'completed. Voice needs OUTBOUND UDP to arbitrary high ports, which some',
-      'hosting platforms block or NAT. This is the classic shape of a bot that',
-      'works locally and fails once deployed.',
-      report,
-    ].join('\n');
+      'Discord answered and the credentials were accepted — so the gateway,',
+      'the intents and the permissions are all fine. What failed is the UDP',
+      'half: voice sends IP-discovery packets to a high port and waits for a',
+      'reply. A host that blocks or does not route outbound UDP stops exactly',
+      'here, while every text command keeps working.',
+      '',
+      'Confirm by running the bot on a different network. A VPS, Fly.io and',
+      'Oracle Cloud all route UDP.',
+    ];
   }
 
-  return report;
+  if (phase === 1) {
+    return [
+      'The voice websocket OPENED and the credentials were sent, then Discord',
+      'closed it. The network is therefore fine — this is a session problem,',
+      'not an egress one.',
+      '',
+      closeCode === 4006 || closeCode === 4009
+        ? [
+            'Codes 4006/4009 mean the session Discord was told about is not the',
+            'one identifying. In order of likelihood:',
+            '  1. A SECOND instance on the same token — the other session owns',
+            '     the voice state. Check for a local `npm start`, a second',
+            '     deployment, or an older container still running.',
+            '  2. The gateway reconnected between the join and the handshake,',
+            '     so session_id went stale. Retrying the command usually works.',
+          ].join('\n')
+        : closeCode === 4004
+          ? [
+              'Code 4004 means the voice token itself was refused, which points',
+              'at a stale VOICE_SERVER_UPDATE. Retry; if it persists, restart',
+              'the bot so the gateway session is rebuilt.',
+            ].join('\n')
+          : 'Retry once, then check https://discordstatus.com for a voice incident.',
+    ];
+  }
+
+  return [
+    'The voice websocket never finished opening, so the bot could not reach',
+    'the voice endpoint at all. That is DNS or outbound TCP/443 to a',
+    '*.discord.media host — a firewall or proxy, not Discord.',
+  ];
 }
 
 export function getPlayer(guild) {

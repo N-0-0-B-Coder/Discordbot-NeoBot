@@ -5,6 +5,7 @@ import { consume, release } from '../src/lib/cooldowns.js';
 import { truncate, formatDuration } from '../src/lib/embeds.js';
 import { paint, green, red, highlight } from '../src/lib/colors.js';
 import { log } from '../src/lib/logger.js';
+import { describeVoiceFailure } from '../src/music/diagnose.js';
 
 describe('parseDuration', () => {
   test('parses single units', () => {
@@ -102,5 +103,29 @@ describe('logger', () => {
       log.debug('debug line');
       log.success('success line');
     });
+  });
+});
+
+describe('describeVoiceFailure', () => {
+  // The connection status rewinds to "signalling" on every retry, so keying the
+  // message on it alone blamed a second bot instance for a failure that had
+  // demonstrably got past signalling. The phase is the honest signal.
+  test('a UDP-phase failure is not blamed on a second instance', () => {
+    const message = describeVoiceFailure({ state: 'signalling', phase: 2 }, 'voice');
+    assert.ok(message.includes('UDP'));
+    assert.ok(!message.includes('second copy'));
+  });
+
+  test('a rejected session names the close code', () => {
+    const message = describeVoiceFailure(
+      { state: 'signalling', phase: 1, closeCode: 4006 },
+      'voice',
+    );
+    assert.ok(message.includes('4006'));
+  });
+
+  test('falls back to the status when no phase was recorded', () => {
+    const message = describeVoiceFailure({ state: 'signalling' }, 'voice');
+    assert.ok(message.includes('voice server'));
   });
 });

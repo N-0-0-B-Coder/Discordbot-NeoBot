@@ -17,6 +17,41 @@
  */
 export function describeVoiceFailure(err, channelName) {
   const state = err?.state;
+  const phase = err?.phase ?? null;
+
+  // Prefer the handshake phase over the connection status. The status rewinds
+  // to "signalling" whenever a retry starts, so keying on it alone told people
+  // "Discord never sent me a voice server" in cases where it demonstrably had.
+  if (phase !== null) {
+    if (phase >= 2) {
+      return [
+        `I reached **${channelName}** but the audio connection never completed.`,
+        '',
+        'Discord carries voice over UDP, and some networks and hosting',
+        'platforms block it. Text commands are unaffected. This one is for',
+        'whoever runs the bot — the server log has the full diagnosis.',
+      ].join('\n');
+    }
+
+    if (phase === 1) {
+      return [
+        `I could not finish connecting to **${channelName}**.`,
+        '',
+        'Discord accepted the join and then closed the voice session' +
+          (err?.closeCode ? ` (code ${err.closeCode})` : '') + '.',
+        'Usually that means a second copy of me is running on the same token,',
+        'or my session went stale. Try again — if it keeps happening, whoever',
+        'runs the bot should check the log.',
+      ].join('\n');
+    }
+
+    return [
+      `I could not reach Discord's voice servers for **${channelName}**.`,
+      '',
+      'The connection to the voice endpoint never opened, which is a network',
+      'problem on my side rather than anything you did.',
+    ].join('\n');
+  }
 
   if (state === 'signalling') {
     return [
