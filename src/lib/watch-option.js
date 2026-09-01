@@ -7,9 +7,9 @@
  * and the thing you subscribe to is the thing you just saw.
  */
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
-import { getSetting } from '../../db/guild-settings.js';
-import { addWatch, MAX_WATCHES_PER_GUILD } from '../../db/price-watches.js';
-import { log } from '../../lib/logger.js';
+import { getSetting } from '../db/guild-settings.js';
+import { addWatch, MAX_WATCHES_PER_GUILD } from '../db/price-watches.js';
+import { log } from './logger.js';
 
 /** Attach with `.addChannelOption(watchOption)`. */
 export const watchOption = (option) =>

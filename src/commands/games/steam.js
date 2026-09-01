@@ -2,7 +2,7 @@ import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
 import { log } from '../../lib/logger.js';
 import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as steam from '../../services/steam.js';
-import { applyWatchOption, watchOption, priceFooter } from './watch-option.js';
+import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
 
 export const data = new SlashCommandBuilder()
   .setName('steam')

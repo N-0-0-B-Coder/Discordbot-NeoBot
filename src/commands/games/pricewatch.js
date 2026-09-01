@@ -7,7 +7,7 @@
 import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 import { COLORS, error } from '../../lib/embeds.js';
 import { listWatches, removeWatch, MAX_WATCHES_PER_GUILD } from '../../db/price-watches.js';
-import { describeWatch } from './watch-option.js';
+import { describeWatch } from '../../lib/watch-option.js';
 
 export const data = new SlashCommandBuilder()
   .setName('pricewatch')
