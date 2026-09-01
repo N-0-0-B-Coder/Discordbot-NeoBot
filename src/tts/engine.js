@@ -30,13 +30,55 @@ import { log } from '../lib/logger.js';
  *
  * Returns { stream, inputType, cleanup }.
  */
-export async function synthesize(text, voice = config.tts.voice) {
+export async function synthesize(text, voice = config.tts.voice, { onProblem } = {}) {
   const tts = new MsEdgeTTS();
   // Opens a WebSocket to the service. Done per utterance rather than pooled:
   // a stale socket is a far more annoying failure than a ~200ms handshake.
   await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
   const { audioStream } = tts.toStream(text);
+
+  // The library's own `onclose` handler discards the close code, and that code
+  // is the whole diagnosis when the service hangs up early: a policy refusal
+  // (Microsoft rejecting the request or the address) looks nothing like a
+  // dropped connection, but both surface as the same "no turn.end" error.
+  // `onclose` is a property assignment inside the library, so adding a real
+  // listener alongside it does not disturb anything.
+  const socket = { code: null, reason: '', bytes: 0, startedAt: Date.now() };
+  try {
+    tts._ws?.addEventListener?.('close', (event) => {
+      socket.code = event?.code ?? null;
+      socket.reason = String(event?.reason ?? '');
+    });
+  } catch {
+    // Reaching into a private field is best-effort; never break TTS for it.
+  }
+
+  audioStream.on('data', (chunk) => {
+    socket.bytes += chunk.length;
+  });
+
+  /** Describes the attempt in one line, for a log or a Discord message. */
+  const describe = () => {
+    const seconds = ((Date.now() - socket.startedAt) / 1000).toFixed(1);
+    const closed =
+      socket.code === null
+        ? 'socket still open'
+        : `closed ${socket.code}${socket.reason ? ` "${socket.reason}"` : ''}`;
+    return `${socket.bytes} bytes of audio in ${seconds}s, ${closed}`;
+  };
+
+  const report = (summary) => {
+    log.warn(`TTS synthesis problem: ${summary} (${describe()})`);
+    onProblem?.(summary, { ...socket });
+  };
+
+  // Zero bytes is the failure that produces SILENCE rather than an error: the
+  // stream simply ends, ffmpeg emits an empty file, and the player goes idle
+  // with nothing to show for it. Catch it explicitly.
+  audioStream.on('end', () => {
+    if (socket.bytes === 0) report('the service returned no audio at all');
+  });
 
   const ffmpegProcess = spawn(
     ffmpegPath,
@@ -73,7 +115,8 @@ export async function synthesize(text, voice = config.tts.voice) {
   // EPIPE is expected when a clip is cut short — tearing down one end closes
   // the pipe the other was writing into.
   const ignoreEpipe = (err) => {
-    if (err?.code !== 'EPIPE') log.warn('TTS stream error:', err);
+    if (err?.code === 'EPIPE') return;
+    report(err?.message ?? String(err));
   };
   audioStream.on('error', ignoreEpipe);
   ffmpegProcess.stdin.on('error', ignoreEpipe);

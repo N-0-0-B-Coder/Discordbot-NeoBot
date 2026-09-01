@@ -53,6 +53,8 @@ export class GuildVoiceSession {
     this.speaking = false;
     this.ducked = false;
     this.ttsCleanup = null;
+    // Latched so a systemic speech failure is announced once, not per line.
+    this.ttsProblemReported = false;
     // Held as an instance property so tests can substitute a synthesiser
     // without a network round-trip to the Edge service.
     this.synthesize = synthesize;
@@ -290,7 +292,9 @@ export class GuildVoiceSession {
 
     try {
       const voice = this.ttsVoice ?? getTtsVoice(this.guild.id);
-      const { stream, inputType, cleanup } = await this.synthesize(text, voice);
+      const { stream, inputType, cleanup } = await this.synthesize(text, voice, {
+        onProblem: (summary) => this.reportTtsProblem(summary),
+      });
       this.ttsCleanup = cleanup;
       this.ttsPlayer.play(createAudioResource(stream, { inputType }));
     } catch (err) {
@@ -298,6 +302,26 @@ export class GuildVoiceSession {
       // Skip this line and keep the queue moving rather than wedging.
       await this.drainSpeech();
     }
+  }
+
+  /**
+   * Says out loud that speech failed, once per session.
+   *
+   * A failed synthesis is otherwise INVISIBLE: the line is skipped, the queue
+   * moves on, and everyone sits watching a bot that joined the channel and says
+   * nothing. Silence is the one outcome a voice feature must never produce
+   * without explanation. Once per session, because the cause is almost always
+   * systemic — a message per dropped line would be worse than the silence.
+   */
+  reportTtsProblem(summary) {
+    if (this.ttsProblemReported) return;
+    this.ttsProblemReported = true;
+    log.warn(`[${this.guild.id}] Speech is failing: ${summary}`);
+    this.announce(
+      `I cannot speak right now — the text-to-speech service is not returning ` +
+        `audio (${summary}). I will keep listening in case it recovers; the ` +
+        `server log has the details.`,
+    );
   }
 
   /** Restores music once the speech queue empties. */

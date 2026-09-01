@@ -114,6 +114,22 @@ describe('music/TTS ducking', () => {
     return { session, state };
   }
 
+  test('a speech failure is announced once, not per line', async () => {
+    // Silence is the one outcome a voice feature must never produce without
+    // explanation — but one message per dropped line would be worse than the
+    // silence it explains.
+    const { session } = makeSession();
+    const announced = [];
+    session.textChannel = { send: async (payload) => announced.push(payload.content) };
+
+    session.reportTtsProblem('the service returned no audio at all');
+    session.reportTtsProblem('the service returned no audio at all');
+    session.reportTtsProblem('something else entirely');
+
+    assert.equal(announced.length, 1);
+    assert.ok(announced[0].includes('no audio'));
+  });
+
   test('ducks music, speaks, then restores it', async () => {
     const { session, state } = makeSession();
     assert.equal(state.subscribed, 'music');
