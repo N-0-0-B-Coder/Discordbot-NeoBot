@@ -195,6 +195,7 @@ function checkVoiceEncryption(findings) {
  * database is being written.
  */
 function checkPersistence(findings) {
+  const volume = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || null;
   const hosted = Boolean(
     process.env.RAILWAY_ENVIRONMENT ??
       process.env.RAILWAY_SERVICE_ID ??
@@ -221,12 +222,17 @@ function checkPersistence(findings) {
       '  container and is rebuilt on every deploy. A volume that EXISTS but is',
       '  mounted at a different path does not help — the paths have to match.',
     ].join('\n'),
-    fix: [
-      'Point them at each other. Either set DATABASE_PATH to the volume mount',
-      '  path (Railway: Variables -> DATABASE_PATH=/data/neobot.sqlite for a',
-      '  volume mounted at /data), or change the mount path to match the',
-      '  current one. Redeploy, and the SQLite line should say "existing".',
-    ].join('\n'),
+    fix: volume
+      ? [
+          `A volume IS mounted, at ${volume} — the bot is just not writing`,
+          '  there. Set the variable to match it, then redeploy:',
+          `      DATABASE_PATH=${volume.replace(/\/+$/, '')}/neobot.sqlite`,
+        ].join('\n')
+      : [
+          'No volume is mounted. Add one (Railway: Service -> Volumes), then',
+          '  set DATABASE_PATH to a file inside its mount path, e.g.',
+          '      DATABASE_PATH=/data/neobot.sqlite',
+        ].join('\n'),
   });
 }
 

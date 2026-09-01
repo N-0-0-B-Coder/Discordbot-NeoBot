@@ -52,6 +52,23 @@ function optional(name, fallback = null) {
   return value ? value : fallback;
 }
 
+/**
+ * Where the database goes when DATABASE_PATH is not set.
+ *
+ * `./data` is right on a laptop and quietly catastrophic on a platform that
+ * rebuilds the container on every deploy: the bot starts perfectly, and every
+ * setting the server chose is gone. That happened here — a volume was attached
+ * and mounted, and the bot wrote next to it instead of into it, because the two
+ * were configured independently and nothing checked they agreed.
+ *
+ * Railway publishes the mount path, so prefer it. A default that cannot lose
+ * data beats a default that needs a second variable to be safe.
+ */
+function defaultDatabasePath() {
+  const volume = process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim();
+  return volume ? `${volume.replace(/\/+$/, '')}/neobot.sqlite` : './data/neobot.sqlite';
+}
+
 export const config = {
   token: required('DISCORD_TOKEN'),
   clientId: required('DISCORD_CLIENT_ID'),
@@ -61,7 +78,7 @@ export const config = {
   itadApiKey: optional('ITAD_API_KEY'),
   priceCountry: (optional('PRICE_COUNTRY', 'US')).toUpperCase(),
 
-  databasePath: optional('DATABASE_PATH', './data/neobot.sqlite'),
+  databasePath: optional('DATABASE_PATH', defaultDatabasePath()),
   logLevel: optional('LOG_LEVEL', 'info'),
 
   // Where runtime errors get mirrored. On a hosted bot nobody reads stdout, so

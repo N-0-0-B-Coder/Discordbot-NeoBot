@@ -105,6 +105,51 @@ describe('setting validation', () => {
   });
 });
 
+describe('database path default', () => {
+  // A default that needs a second variable to be safe is not a safe default:
+  // a volume was mounted, the bot wrote next to it rather than into it, and
+  // every /config setting was lost on each deploy while the bot looked healthy.
+  const load = async (env) => {
+    const previous = { ...process.env };
+    Object.assign(process.env, { DATABASE_PATH: '', ...env });
+    try {
+      // Cache-bust so the module re-reads the environment.
+      const mod = await import(`../src/lib/config.js?case=${Math.random()}`);
+      return mod.config.databasePath;
+    } finally {
+      process.env = previous;
+    }
+  };
+
+  test('prefers the mounted volume when the platform names one', async () => {
+    assert.equal(
+      await load({ RAILWAY_VOLUME_MOUNT_PATH: '/data' }),
+      '/data/neobot.sqlite',
+    );
+  });
+
+  test('tolerates a trailing slash on the mount path', async () => {
+    assert.equal(
+      await load({ RAILWAY_VOLUME_MOUNT_PATH: '/data/' }),
+      '/data/neobot.sqlite',
+    );
+  });
+
+  test('falls back to ./data with no volume', async () => {
+    assert.equal(
+      await load({ RAILWAY_VOLUME_MOUNT_PATH: '' }),
+      './data/neobot.sqlite',
+    );
+  });
+
+  test('an explicit DATABASE_PATH still wins', async () => {
+    assert.equal(
+      await load({ DATABASE_PATH: '/custom/db.sqlite', RAILWAY_VOLUME_MOUNT_PATH: '/data' }),
+      '/custom/db.sqlite',
+    );
+  });
+});
+
 describe('config modal', () => {
   test('builds with a Label component, not a deprecated action row', async () => {
     // TextInputBuilder#setLabel and ModalBuilder#addComponents are both

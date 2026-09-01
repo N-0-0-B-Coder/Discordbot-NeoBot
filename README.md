@@ -206,11 +206,11 @@ connection is not.
 
 1. Push this repo to GitHub, then **New Project → Deploy from GitHub repo**.
 2. Add every variable from your local `.env` under **Variables**.
-3. **Add a volume, and make `DATABASE_PATH` match its mount path.** Both halves
-   are required and neither is enough alone: a volume mounted at `/data` while
-   the bot still writes to the default `./data` means the volume sits there
-   empty while the real database is rebuilt with the container every deploy.
-   Mount at `/data` and set `DATABASE_PATH=/data/neobot.sqlite`.
+3. **Add a volume — and then leave `DATABASE_PATH` unset.** Railway publishes
+   the mount path, and the bot writes there automatically. Setting the variable
+   to a path that is not on the volume is exactly how data is lost: the volume
+   sits there empty, the real database is rebuilt with the container on every
+   deploy, and the bot starts perfectly while it happens.
 
    The startup log now says which happened, so you never have to guess:
 
