@@ -9,11 +9,15 @@
  */
 import { getSetting } from '../db/guild-settings.js';
 import { createCache, fetchJson } from '../lib/http.js';
+import { REGIONS } from '../lib/regions.js';
 
 const STORE = 'https://store.steampowered.com';
 
 const searchCache = createCache({ ttlMs: 60 * 60 * 1000 });
 const detailsCache = createCache({ ttlMs: 15 * 60 * 1000 });
+// Regional prices move only when a sale starts, and one lookup fills sixteen
+// entries — so this is cached longer and given room for several games.
+const regionCache = createCache({ ttlMs: 60 * 60 * 1000, maxEntries: 500 });
 
 /**
  * Searches the Steam store. Returns [{ appId, name, thumbnail }].
@@ -93,4 +97,60 @@ export async function lookupGame(guildId, term) {
   const [first] = await searchApps(guildId, term, 1);
   if (!first) return null;
   return getAppDetails(guildId, first.appId);
+}
+
+/**
+ * The same game's price in every comparison region.
+ *
+ * Steam's storefront takes a `cc` parameter and answers with that country's
+ * price, so cross-region comparison needs no third-party service and no
+ * account — which matters, because avoiding a signup is the whole reason this
+ * exists alongside the IsThereAnyDeal path.
+ *
+ * `filters=price_overview` keeps each response tiny; without it Steam sends the
+ * full store page for every region, which is megabytes for one number.
+ *
+ * Requests are sequential and spaced. Sixteen parallel calls is exactly the
+ * shape of traffic Steam's per-IP limit exists to stop, and a lookup nobody is
+ * timing is the wrong place to be in a hurry.
+ *
+ * @returns {Promise<Array<{code, name, amount, currency, formatted, discountPercent}>>}
+ *   one entry per region that sells the game. Regions that do not sell it are
+ *   absent rather than null — "not for sale here" is the answer, not a gap.
+ */
+export async function getRegionalPrices(appId, { spacingMs = 120 } = {}) {
+  const found = [];
+
+  for (const region of REGIONS) {
+    const price = await regionalPrice(appId, region.code);
+    if (price) found.push({ ...region, ...price });
+    if (spacingMs) await new Promise((resolve) => setTimeout(resolve, spacingMs));
+  }
+
+  return found;
+}
+
+async function regionalPrice(appId, code) {
+  const url = new URL('/api/appdetails', STORE);
+  url.searchParams.set('appids', String(appId));
+  url.searchParams.set('cc', code);
+  url.searchParams.set('filters', 'price_overview');
+
+  try {
+    const payload = await regionCache.wrap(`region:${appId}:${code}`, () =>
+      fetchJson(url, { timeoutMs: 5_000, retries: 0 }),
+    );
+    const price = payload?.[String(appId)]?.data?.price_overview;
+    if (!price || typeof price.final !== 'number') return null;
+
+    return {
+      amount: price.final / 100,
+      currency: price.currency,
+      formatted: price.final_formatted,
+      discountPercent: price.discount_percent ?? 0,
+    };
+  } catch {
+    // One unreachable region must not lose the other fifteen.
+    return null;
+  }
 }

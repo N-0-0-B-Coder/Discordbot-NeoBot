@@ -3,6 +3,12 @@ import { log } from '../../lib/logger.js';
 import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as steam from '../../services/steam.js';
 import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
+import { getSetting } from '../../db/guild-settings.js';
+import {
+  BUYING_NOTE,
+  describeRegionalPrices,
+  notSoldHere,
+} from '../../lib/regional-prices.js';
 
 export const data = new SlashCommandBuilder()
   .setName('steam')
@@ -14,6 +20,11 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
       .setAutocomplete(true)
       .setMaxLength(120),
+  )
+  .addBooleanOption((option) =>
+    option
+      .setName('worldwide')
+      .setDescription('Compare the price across 16 Steam regions'),
   )
   .addChannelOption(watchOption);
 
@@ -110,6 +121,40 @@ export async function execute(interaction) {
       value: truncate(game.developers.join(', '), 200),
       inline: true,
     });
+  }
+
+  // Compare across countries when asked — and ALWAYS when the local store has
+  // no price, because that is the case where "no price" is a misleading answer:
+  // the game may simply not be sold here while costing $9.99 elsewhere.
+  const localHasPrice = Boolean(game.price) || game.isFree;
+  const wantsWorldwide = interaction.options.getBoolean('worldwide') ?? false;
+
+  if (wantsWorldwide || !localHasPrice) {
+    const country = getSetting(interaction.guildId, 'priceCountry');
+    const regions = await steam.getRegionalPrices(game.appId).catch((err) => {
+      log.warn('Regional price lookup failed:', err);
+      return [];
+    });
+    const { lines, ranked, cheapest } = await describeRegionalPrices(regions);
+
+    if (!localHasPrice && !game.comingSoon) {
+      embed.addFields({
+        name: '🌍 Not available in your region',
+        value: notSoldHere(country, cheapest),
+      });
+    }
+
+    if (lines.length > 0) {
+      embed.addFields({
+        name: ranked ? '🌍 Cheapest regions' : '🌍 Prices by region',
+        value: `${lines.join('\n')}\n\n*${BUYING_NOTE}*`,
+      });
+    } else if (wantsWorldwide) {
+      embed.addFields({
+        name: '🌍 Prices by region',
+        value: 'No region I checked is selling this right now.',
+      });
+    }
   }
 
   const watchNote = await applyWatchOption(interaction, {

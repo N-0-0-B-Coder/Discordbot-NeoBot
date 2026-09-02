@@ -272,6 +272,31 @@ Run `npm run deploy` once locally (or as a one-off Railway command) after the
 first deploy — the bot never registers commands at startup, so a crash loop can
 never wipe them.
 
+### Cross-country prices without an account
+
+`/steam` takes a **worldwide** option: the same game priced across 16 Steam
+regions, converted to USD so they can actually be ranked. It runs
+**automatically** when the game has no price on your local store — a game
+missing from your region otherwise looks identical to a game that does not
+exist, and "no results" is the wrong answer when the truth is "not sold here,
+$9.99 in the US".
+
+This exists because IsThereAnyDeal needs an account, and not everyone wants
+one. Steam's own store API takes a `cc` parameter, so comparing countries needs
+nothing but Steam plus a currency table (`open.er-api.com`, also keyless). Note
+that the two answer different questions: **ITAD compares stores, this compares
+countries.** Neither replaces the other.
+
+Honesty built in: Steam sells at the country of your payment method and treats
+working around that as account abuse, so every comparison carries a note saying
+these are for reference, not prices you can switch to. Argentina and Turkey
+moved to USD pricing in November 2023, which ended the two famously cheap
+regions — they are still listed, just no longer a bargain.
+
+Sixteen sequential requests, spaced, cached an hour, behind the existing 8s
+cooldown. `filters=price_overview` keeps each response to one number instead of
+a full store page.
+
 ### Price watches
 
 `/deals` and `/steam` both take an optional **watch** channel. Picking one saves

@@ -57,6 +57,9 @@ function buildSections() {
         '',
         'Both take an optional **watch** channel: pick one and I post there',
         `whenever that price changes. ${m('pricewatch list')} lists and cancels them.`,
+        '',
+        `${m('steam')} also takes **worldwide** — the same game priced across 16`,
+        'countries, for when it is missing or dearer on your local store.',
       ].join('\n'),
     },
     {
