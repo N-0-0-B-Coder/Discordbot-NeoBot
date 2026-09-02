@@ -1,5 +1,6 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { COLORS } from '../../lib/embeds.js';
+import { mention } from '../../lib/command-mentions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('help')
@@ -16,75 +17,82 @@ export const guildOnly = false;
  * chat is read aloud with nothing further typed. An auto-generated list would
  * describe the door and never mention the room.
  *
- * The cost is that this file has to be updated alongside a new command.
+ * The cost is that this file has to be updated alongside a new command. A test
+ * asserts every loaded command appears here.
+ *
+ * Built per invocation, not once at import, because `mention()` renders
+ * clickable command chips from ids that are only known after login.
  */
-const SECTIONS = [
-  {
-    name: '🔊 Text-to-speech — my main trick',
-    value: [
-      'Run `/tts-join` in a voice channel and I read **its own chat** aloud.',
-      'No command per message — just type in the voice channel and I speak it.',
-      '',
-      '`/tts-join` — join and start reading',
-      '`/tts-leave` — stop (I also leave on my own when the channel empties)',
-      '`/tts-voice` — show, change or reset my voice (300+ to choose from)',
-      "`/say` — Discord's own TTS, read by your client, not in voice",
-    ].join('\n'),
-  },
-  {
-    name: '🎵 Music',
-    value: [
-      '`/play` — search or paste a link to queue audio',
-      '`/queue` `/nowplaying` — see what is lined up',
-      '`/skip` `/pause` `/resume` `/stop` `/leave` — control playback',
-      '',
-      'Music and speech share one connection: a track **pauses while I speak**,',
-      'then picks up exactly where it left off.',
-    ].join('\n'),
-  },
-  {
-    name: '🎮 Game deals',
-    value: [
-      '`/deals` — cheapest price across Steam, Epic, GOG, Humble and friends',
-      '`/steam` — Steam store page details for one game',
-      '',
-      'Both take an optional **watch** channel: pick one and I post there',
-      'whenever that price changes. `/pricewatch` lists and cancels them.',
-    ].join('\n'),
-  },
-  {
-    name: '🛡️ Moderation (mods only)',
-    value: [
-      '`/warn` `/warnings` `/delwarn` — the infraction log',
-      '`/timeout` `/untimeout` `/kick` `/ban` `/unban` — enforcement',
-      '`/purge` — bulk-delete recent messages',
-    ].join('\n'),
-  },
-  {
-    name: '⚙️ Setup',
-    value: [
-      '`/config` — server settings: deals API key, country, TTS limits and the',
-      'error log channel. Needs **Manage Server**, and only you see the panel.',
-    ].join('\n'),
-  },
-  {
-    name: '🔧 Utilities',
-    value: [
-      '`/ping` — check I am alive, and how laggy my connection is',
-      '`/help` — this list',
-    ].join('\n'),
-  },
-];
+function buildSections() {
+  const m = mention;
+  return [
+    {
+      name: '🔊 Text-to-speech — my main trick',
+      value: [
+        `Run ${m('tts-join')} in a voice channel and I read **its own chat** aloud.`,
+        'No command per message — just type in the voice channel and I speak it.',
+        '',
+        `${m('tts-join')} — join and start reading`,
+        `${m('tts-leave')} — stop (I also leave on my own when the channel empties)`,
+        `${m('tts-voice show')} ${m('tts-voice set')} — 300+ voices to choose from`,
+        `${m('say')} — Discord's own TTS, read by your client, not in voice`,
+      ].join('\n'),
+    },
+    {
+      name: '🎵 Music',
+      value: [
+        `${m('play')} — search or paste a link to queue audio`,
+        `${m('queue')} ${m('nowplaying')} — see what is lined up`,
+        `${m('skip')} ${m('pause')} ${m('resume')} ${m('stop')} ${m('leave')} — control playback`,
+        '',
+        'Music and speech share one connection: a track **pauses while I speak**,',
+        'then picks up exactly where it left off.',
+      ].join('\n'),
+    },
+    {
+      name: '🎮 Game deals',
+      value: [
+        `${m('deals')} — cheapest price across Steam, Epic, GOG, Humble and friends`,
+        `${m('steam')} — Steam store page details for one game`,
+        '',
+        'Both take an optional **watch** channel: pick one and I post there',
+        `whenever that price changes. ${m('pricewatch list')} lists and cancels them.`,
+      ].join('\n'),
+    },
+    {
+      name: '🛡️ Moderation (mods only)',
+      value: [
+        `${m('warn')} ${m('warnings')} ${m('delwarn one')} — the infraction log`,
+        `${m('timeout')} ${m('untimeout')} ${m('kick')} ${m('ban')} ${m('unban')} — enforcement`,
+        `${m('purge')} — bulk-delete recent messages`,
+      ].join('\n'),
+    },
+    {
+      name: '⚙️ Setup',
+      value: [
+        `${m('config')} — server settings: deals API key, country, TTS limits and`,
+        'the error log channel. Needs **Manage Server**, and only you see it.',
+      ].join('\n'),
+    },
+    {
+      name: '🔧 Utilities',
+      value: [
+        `${m('ping')} — check I am alive, and how laggy my connection is`,
+        `${m('help')} — this list`,
+      ].join('\n'),
+    },
+  ];
+}
 
 export async function execute(interaction) {
   const embed = new EmbedBuilder()
     .setColor(COLORS.info)
     .setTitle('NeoBot commands')
     .setDescription(
-      'Everything is a slash command — type `/` and Discord will filter as you go.\n' +
-        'Only the two voice features need anything beyond typing the command.',
+      'Every command below is **clickable** — tap one to run it, no typing.\n' +
+        'Only the two voice features need anything beyond that.',
     )
-    .addFields(SECTIONS)
+    .addFields(buildSections())
     .setFooter({
       text: 'Only people in the voice channel get read aloud · Infraction records are deleted automatically after 30 days.',
     });

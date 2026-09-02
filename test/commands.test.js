@@ -102,9 +102,33 @@ describe('/help', () => {
     });
     const text = embed.data.fields.map((field) => field.value).join(' ');
     for (const [name] of commands) {
-      if (!text.includes(`\`/${name}\``)) listed.push(name);
+      // A command renders either as a clickable mention (</name:id>, or
+      // </name subcommand:id>) or, with no ids loaded, as `/name`. Match the
+      // command name in both shapes rather than assuming one.
+      const appears = new RegExp(`[\`<]/${name}[ :\`]`).test(text);
+      if (!appears) listed.push(name);
     }
     assert.deepEqual(listed, [], `/help does not mention: ${listed.join(', ')}`);
+  });
+});
+
+describe('command mentions', () => {
+  test('renders a clickable chip once the id is known', async () => {
+    const mod = await import('../src/lib/command-mentions.js');
+    mod.setCommandId('tts-join', '123');
+    assert.equal(mod.mention('tts-join'), '</tts-join:123>');
+    // Subcommands resolve against the ROOT command's id.
+    mod.setCommandId('pricewatch', '456');
+    assert.equal(mod.mention('pricewatch list'), '</pricewatch list:456>');
+    mod.clearCommandIds();
+  });
+
+  test('falls back to readable text when no id is loaded', async () => {
+    // Before login, in tests, and for anything unregistered. A help message
+    // that silently lost entries would be a bad trade for a nicer chip.
+    const mod = await import('../src/lib/command-mentions.js');
+    mod.clearCommandIds();
+    assert.equal(mod.mention('help'), '`/help`');
   });
 });
 

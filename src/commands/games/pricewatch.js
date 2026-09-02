@@ -8,6 +8,7 @@ import { EmbedBuilder, MessageFlags, PermissionFlagsBits, SlashCommandBuilder } 
 import { COLORS, error } from '../../lib/embeds.js';
 import { listWatches, removeWatch, MAX_WATCHES_PER_GUILD } from '../../db/price-watches.js';
 import { describeWatch } from '../../lib/watch-option.js';
+import { mention } from '../../lib/command-mentions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('pricewatch')
@@ -40,7 +41,7 @@ export async function execute(interaction) {
       await interaction.reply({
         embeds: [
           error(
-            `No watch with id **${id}** on this server. Run \`/pricewatch list\` to see the ids.`,
+            `No watch with id **${id}** on this server. Run ${mention('pricewatch list')} to see the ids.`,
           ),
         ],
         flags: MessageFlags.Ephemeral,
@@ -66,8 +67,8 @@ export async function execute(interaction) {
           .setColor(COLORS.info)
           .setTitle('No price watches')
           .setDescription(
-            'Add one with the `watch` option on `/deals` or `/steam` — pick the ' +
-              'channel you want the reports in.',
+            `Add one with the **watch** option on ${mention('deals')} or ` +
+              `${mention('steam')} — pick the channel you want the reports in.`,
           ),
       ],
       flags: MessageFlags.Ephemeral,

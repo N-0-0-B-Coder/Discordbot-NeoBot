@@ -5,6 +5,7 @@ import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as itad from '../../services/itad.js';
 import * as steam from '../../services/steam.js';
 import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
+import { mention } from '../../lib/command-mentions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('deals')
@@ -47,7 +48,7 @@ export async function execute(interaction) {
           `No store listings found for **${truncate(title, 100)}**.` +
             (itad.isConfigured(interaction.guildId)
               ? ''
-              : '\n\n*No ITAD key set for this server, so only Steam was searched. An admin can add one with `/config`.*'),
+              : `\n\n*No ITAD key set for this server, so only Steam was searched. An admin can add one with ${mention('config')}.*`),
         ),
       ],
     });
@@ -118,7 +119,7 @@ export async function execute(interaction) {
     embed.addFields({
       name: 'Steam-only results',
       value:
-        'An admin can add an ITAD key with `/config` to compare Epic, GOG, Humble, Fanatical and the rest.',
+        `An admin can add an ITAD key with ${mention('config')} to compare Epic, GOG, Humble, Fanatical and the rest.`,
     });
   }
 

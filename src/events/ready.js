@@ -3,6 +3,8 @@ import { log } from '../lib/logger.js';
 import { highlight } from '../lib/colors.js';
 import { REFRESH_EVERY_MS, refreshVoices } from '../tts/voices.js';
 import { formatFindings, hasErrors, runPreflight } from '../lib/preflight.js';
+import { refreshCommandMentions } from '../lib/command-mentions.js';
+import { config } from '../lib/config.js';
 
 export const name = Events.ClientReady;
 export const once = true;
@@ -16,6 +18,11 @@ export async function execute(client) {
   // here rather than lazily keeps /tts-voice autocomplete purely in-memory.
   refreshVoices();
   setInterval(refreshVoices, REFRESH_EVERY_MS).unref();
+
+  // Command ids, so help text can offer CLICKABLE commands instead of asking
+  // people to retype them. Only knowable at runtime — the id belongs to the
+  // registration, not the source.
+  await refreshCommandMentions(client, config.guildId);
 
   // Self-check the configuration. Everything it looks for fails silently or
   // with a misleading error, so surfacing it at boot beats discovering it when

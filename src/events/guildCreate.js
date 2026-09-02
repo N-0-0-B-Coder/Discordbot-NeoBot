@@ -1,6 +1,7 @@
 import { EmbedBuilder, Events, PermissionFlagsBits } from 'discord.js';
 import { COLORS } from '../lib/embeds.js';
 import { log } from '../lib/logger.js';
+import { mention } from '../lib/command-mentions.js';
 
 export const name = Events.GuildCreate;
 
@@ -24,7 +25,7 @@ export async function execute(guild) {
     .setTitle('👋 Thanks for adding me')
     .setDescription(
       [
-        'Before you start, someone with **Manage Server** should run **`/config`**',
+        `Before you start, someone with **Manage Server** should run ${mention('config')}`,
         'to set this server up. The panel is private — only the person who runs it',
         'sees it.',
       ].join('\n'),
@@ -33,15 +34,15 @@ export async function execute(guild) {
       {
         name: 'Worth setting',
         value: [
-          '🔑 **IsThereAnyDeal API key** — unlocks cross-store prices in `/deals`',
+          `🔑 **IsThereAnyDeal API key** — unlocks cross-store prices in ${mention('deals')}`,
           '🌍 **Price country** — so prices are in your currency',
-          '🚨 **Error log channel** — run `/config` *in* the channel you want, then pick it',
+          `🚨 **Error log channel** — run ${mention('config')} *in* the channel you want, then pick it`,
         ].join('\n'),
       },
       {
         name: 'Everything else already works',
         value:
-          'Sensible defaults are in place, so `/help` will show you around right now.',
+          `Sensible defaults are in place, so ${mention('help')} will show you around right now.`,
       },
     )
     .setFooter({ text: 'Run /config in the channel you want errors reported to.' });
