@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { flag, REGIONS } from '../src/lib/regions.js';
 import { toUsd } from '../src/services/fx.js';
 import { rankResults } from '../src/services/steam.js';
+import { countryName, resolveCountry, searchCountries } from '../src/lib/countries.js';
 import { describeRegionalPrices, notSoldHere } from '../src/lib/regional-prices.js';
 
 const RATES = { VND: 26007.44, TRY: 48.28, BRL: 5.18 };
@@ -134,5 +135,47 @@ describe('search result ranking', () => {
     const original = [...items];
     rankResults(items, 'helldivers');
     assert.deepEqual(items, original);
+  });
+});
+
+describe('country names', () => {
+  // Nobody knows their ISO code. Everything downstream needs one, so the
+  // translation happens once and people only ever see the name.
+  test('resolves a full name', () => {
+    assert.equal(resolveCountry('Vietnam'), 'VN');
+    assert.equal(resolveCountry('united states'), 'US');
+  });
+
+  test('still accepts a code', () => {
+    assert.equal(resolveCountry('vn'), 'VN');
+    assert.equal(resolveCountry('GB'), 'GB');
+  });
+
+  test('an unambiguous prefix resolves, an ambiguous one does not', () => {
+    assert.equal(resolveCountry('viet'), 'VN');
+    // "united" is three countries — guessing would be worse than refusing.
+    assert.equal(resolveCountry('united'), null);
+  });
+
+  test('nonsense is refused rather than guessed', () => {
+    assert.equal(resolveCountry('zzz'), null);
+    assert.equal(resolveCountry(''), null);
+    assert.equal(resolveCountry(null), null);
+  });
+
+  test('names beginning with the query come before names containing it', () => {
+    // Typing "in" should offer India before Argentina.
+    const names = searchCountries('in').map((c) => c.name);
+    assert.ok(names.indexOf('India') < names.indexOf('Argentina'), names.slice(0, 5).join(', '));
+  });
+
+  test('never returns more than the 25-choice limit', () => {
+    assert.ok(searchCountries('a').length <= 25);
+    assert.ok(searchCountries('').length <= 25);
+  });
+
+  test('renders a readable name for a stored code', () => {
+    assert.equal(countryName('VN'), 'Vietnam');
+    assert.equal(countryName('vn'), 'Vietnam');
   });
 });

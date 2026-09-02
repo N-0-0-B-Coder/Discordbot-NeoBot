@@ -7,6 +7,7 @@
  * adding a setting means adding one entry and nothing else.
  */
 import { config } from './config.js';
+import { countryName, resolveCountry } from './countries.js';
 
 /** @typedef {'string'|'secret'|'integer'|'boolean'|'channel'} SettingType */
 
@@ -39,19 +40,27 @@ export const SETTINGS = [
     type: 'string',
     label: 'Price country',
     emoji: '🌍',
-    description: 'Two-letter country code used for /deals and /steam pricing',
-    modalLabel: 'Country code (e.g. VN, US, GB)',
-    placeholder: 'VN',
-    maxLength: 2,
+    description: 'Country used for /deals and /steam pricing',
+    modalLabel: 'Country name or code',
+    placeholder: 'Vietnam',
+    maxLength: 60,
     envDefault: () => config.priceCountry,
+    // A name is accepted as readily as a code. The modal cannot autocomplete
+    // (only slash-command options can, which is why /config takes a country
+    // option), so the least it can do is understand what someone types.
     validate: (raw) => {
-      const value = raw.trim().toUpperCase();
-      if (!/^[A-Z]{2}$/.test(value)) {
-        return { ok: false, reason: 'Use exactly two letters, like `VN` or `US`.' };
+      const value = resolveCountry(raw);
+      if (!value) {
+        return {
+          ok: false,
+          reason: `I do not recognise \`${raw.trim().slice(0, 40)}\` as a country. Try its English name, like \`Vietnam\`.`,
+        };
       }
       return { ok: true, value };
     },
-    format: (value) => `\`${value}\``,
+    // Stored as a code, shown as a name — the code is for the store APIs, not
+    // for the person reading the panel.
+    format: (value) => `${countryName(value)} (\`${value}\`)`,
   },
   {
     key: 'ttsMaxMessageLength',

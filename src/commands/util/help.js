@@ -75,6 +75,9 @@ function buildSections() {
       value: [
         `${m('config')} — server settings: deals API key, country, TTS limits and`,
         'the error log channel. Needs **Manage Server**, and only you see it.',
+        '',
+        `${m('config')} \`country:\` sets where prices come from — start typing a`,
+        'country name and pick it from the list.',
       ].join('\n'),
     },
     {

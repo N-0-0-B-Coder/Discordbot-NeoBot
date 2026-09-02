@@ -15,9 +15,47 @@ export const data = new SlashCommandBuilder()
       .setName('game')
       .setDescription('Game title')
       .setRequired(true)
+      .setAutocomplete(true)
       .setMaxLength(120),
   )
   .addChannelOption(watchOption);
+
+/**
+ * Titles come from Steam's search, even though the lookup itself prefers
+ * IsThereAnyDeal.
+ *
+ * ITAD's own search would be the obvious source, but it needs a key — and a
+ * server without one is exactly the server that most needs help typing a title
+ * correctly. Steam answers for everyone, and a game's Steam title is the same
+ * string ITAD matches on.
+ *
+ * The value is the TITLE, not an app id: /deals searches by name across every
+ * store, so an id would narrow it back to Steam and defeat the point.
+ */
+export async function autocomplete(interaction) {
+  const query = interaction.options.getFocused();
+  if (query.length < 3) {
+    await interaction.respond([]);
+    return;
+  }
+  try {
+    // Discord discards an autocomplete reply after 3 seconds, so this gets a
+    // hard 2s ceiling and no retries — a retry after the deadline is work
+    // nobody can receive.
+    const results = await steam.searchApps(interaction.guildId, query, 10, {
+      timeoutMs: 2_000,
+      retries: 0,
+    });
+    await interaction.respond(
+      results.map((item) => ({
+        name: truncate(item.name, 100),
+        value: truncate(item.name, 100),
+      })),
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 // Steam's storefront is IP rate-limited (~200 req / 5 min) and the ITAD key has
 // a quota — both are shared by everyone in the server, so one person mashing
