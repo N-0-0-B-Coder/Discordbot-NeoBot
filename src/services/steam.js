@@ -27,7 +27,7 @@ const regionCache = createCache({ ttlMs: 60 * 60 * 1000, maxEntries: 500 });
  * to far longer than Discord will wait, and every retry after the deadline is
  * work nobody can receive.
  */
-export async function searchApps(guildId, term, limit = 5, fetchOptions = {}) {
+export async function searchApps(guildId, term, limit = 5, fetchOptions = {}, { fallbackToLocal = true } = {}) {
   // SEARCH the widest catalogue, PRICE in the local one. Searching the local
   // storefront hides everything it does not sell — and hides it partially,
   // which is worse than hiding it completely: Helldivers 2 is not sold in
@@ -38,7 +38,11 @@ export async function searchApps(guildId, term, limit = 5, fetchOptions = {}) {
 
   // The wide catalogue is not a strict superset — a title can be delisted in
   // the US and sold elsewhere — so fall back rather than insisting.
-  if (items.length === 0) {
+  //
+  // Autocomplete opts out: two sequential requests cannot fit in Discord's 3
+  // second window, and a second search that usually finds nothing is a poor
+  // trade for blowing the deadline on every miss.
+  if (items.length === 0 && fallbackToLocal) {
     items = await rawSearch(getSetting(guildId, 'priceCountry'), term, fetchOptions);
   }
 

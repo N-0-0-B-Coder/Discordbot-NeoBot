@@ -4,6 +4,7 @@ import { flag, REGIONS } from '../src/lib/regions.js';
 import { toUsd } from '../src/services/fx.js';
 import { rankResults } from '../src/services/steam.js';
 import { countryName, resolveCountry, searchCountries } from '../src/lib/countries.js';
+import { echoChoice, respondInTime } from '../src/lib/autocomplete.js';
 import { describeRegionalPrices, notSoldHere } from '../src/lib/regional-prices.js';
 
 const RATES = { VND: 26007.44, TRY: 48.28, BRL: 5.18 };
@@ -177,5 +178,57 @@ describe('country names', () => {
   test('renders a readable name for a stored code', () => {
     assert.equal(countryName('VN'), 'Vietnam');
     assert.equal(countryName('vn'), 'Vietnam');
+  });
+});
+
+describe('autocomplete deadline', () => {
+  // Discord discards an autocomplete reply after 3 seconds and shows "Loading
+  // options failed". Slow work must degrade to something usable, not to that.
+  const interaction = (sent) => ({ respond: async (choices) => sent.push(choices) });
+
+  test('slow work loses to the fallback rather than the deadline', async () => {
+    const sent = [];
+    const never = new Promise(() => {});
+    await respondInTime(interaction(sent), never, {
+      budgetMs: 30,
+      fallback: echoChoice('helldivers 2'),
+    });
+    assert.equal(sent.length, 1, 'must always answer');
+    assert.equal(sent[0][0].value, 'helldivers 2');
+  });
+
+  test('work that finishes in time wins', async () => {
+    const sent = [];
+    const fast = Promise.resolve([{ name: 'Terraria', value: '105600' }]);
+    await respondInTime(interaction(sent), fast, {
+      budgetMs: 500,
+      fallback: echoChoice('terr'),
+    });
+    assert.equal(sent[0][0].value, '105600');
+  });
+
+  test('a rejected lookup still answers', async () => {
+    const sent = [];
+    await respondInTime(interaction(sent), Promise.reject(new Error('Steam down')), {
+      budgetMs: 500,
+      fallback: echoChoice('portal'),
+    });
+    assert.equal(sent[0][0].value, 'portal');
+  });
+
+  test('the 25-choice cap is enforced', async () => {
+    const sent = [];
+    const many = Array.from({ length: 40 }, (_, i) => ({ name: `g${i}`, value: `${i}` }));
+    await respondInTime(interaction(sent), Promise.resolve(many), { budgetMs: 500 });
+    assert.equal(sent[0].length, 25);
+  });
+
+  test('a dead interaction token does not throw', async () => {
+    // Past the deadline the token is gone and respond() rejects. That must not
+    // surface as a command failure.
+    const dead = { respond: async () => { throw new Error('Unknown interaction'); } };
+    await assert.doesNotReject(() =>
+      respondInTime(dead, Promise.resolve([]), { budgetMs: 20, fallback: echoChoice('x') }),
+    );
   });
 });

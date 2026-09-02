@@ -6,6 +6,7 @@ import * as itad from '../../services/itad.js';
 import * as steam from '../../services/steam.js';
 import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
 import { mention } from '../../lib/command-mentions.js';
+import { echoChoice, respondInTime } from '../../lib/autocomplete.js';
 
 export const data = new SlashCommandBuilder()
   .setName('deals')
@@ -38,23 +39,21 @@ export async function autocomplete(interaction) {
     await interaction.respond([]);
     return;
   }
-  try {
-    // Discord discards an autocomplete reply after 3 seconds, so this gets a
-    // hard 2s ceiling and no retries — a retry after the deadline is work
-    // nobody can receive.
-    const results = await steam.searchApps(interaction.guildId, query, 10, {
-      timeoutMs: 2_000,
-      retries: 0,
-    });
-    await interaction.respond(
+  const work = steam
+    .searchApps(interaction.guildId, query, 10, { timeoutMs: 1_800, retries: 0 }, {
+      fallbackToLocal: false,
+    })
+    .then((results) =>
       results.map((item) => ({
         name: truncate(item.name, 100),
         value: truncate(item.name, 100),
       })),
     );
-  } catch {
-    await interaction.respond([]);
-  }
+
+  await respondInTime(interaction, work, {
+    fallback: echoChoice(query),
+    label: '/deals autocomplete',
+  });
 }
 
 // Steam's storefront is IP rate-limited (~200 req / 5 min) and the ITAD key has

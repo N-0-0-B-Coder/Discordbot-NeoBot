@@ -4,6 +4,7 @@ import { COLORS, error, truncate } from '../../lib/embeds.js';
 import * as steam from '../../services/steam.js';
 import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
 import { getSetting } from '../../db/guild-settings.js';
+import { echoChoice, respondInTime } from '../../lib/autocomplete.js';
 import {
   BUYING_NOTE,
   describeRegionalPrices,
@@ -34,26 +35,28 @@ export async function autocomplete(interaction) {
     await interaction.respond([]);
     return;
   }
-  try {
-    // Hard 2s ceiling and no retries: Discord discards an autocomplete reply
-    // that arrives after 3 seconds, so anything slower is wasted work. A cache
-    // hit returns instantly; a cold miss gives up early rather than retrying
-    // into a deadline that has already passed.
-    const results = await steam.searchApps(interaction.guildId, query, 10, {
-      timeoutMs: 2_000,
-      retries: 0,
-    });
-    await interaction.respond(
+
+  // One search, no retries, and a hard deadline enforced by respondInTime.
+  // Everything here is sized against Discord's 3 second window rather than
+  // against how long Steam might like to take.
+  const work = steam
+    .searchApps(interaction.guildId, query, 10, { timeoutMs: 1_800, retries: 0 }, {
+      fallbackToLocal: false,
+    })
+    .then((results) =>
       results.map((item) => ({
         name: truncate(item.name, 100),
         // The value carries the app id so execute() can skip a second search.
         value: String(item.appId),
       })),
     );
-  } catch {
-    // Autocomplete must never throw at the user; an empty list is fine.
-    await interaction.respond([]);
-  }
+
+  // execute() also accepts free text, so offering the typed string back keeps
+  // the command usable when Steam is slow.
+  await respondInTime(interaction, work, {
+    fallback: echoChoice(query),
+    label: '/steam autocomplete',
+  });
 }
 
 // Same shared Steam IP budget as /deals. Autocomplete already fires a search
