@@ -7,6 +7,7 @@ import * as steam from '../../services/steam.js';
 import { applyWatchOption, watchOption, priceFooter } from '../../lib/watch-option.js';
 import { mention } from '../../lib/command-mentions.js';
 import { echoChoice, respondInTime } from '../../lib/autocomplete.js';
+import { attachRegionalPrices } from '../../lib/regional-prices.js';
 
 export const data = new SlashCommandBuilder()
   .setName('deals')
@@ -18,6 +19,11 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
       .setAutocomplete(true)
       .setMaxLength(120),
+  )
+  .addBooleanOption((option) =>
+    option
+      .setName('worldwide')
+      .setDescription('Also compare the price across 16 Steam regions'),
   )
   .addChannelOption(watchOption);
 
@@ -159,6 +165,20 @@ export async function execute(interaction) {
         `An admin can add an ITAD key with ${mention('config')} to compare Epic, GOG, Humble, Fanatical and the rest.`,
     });
   }
+
+  // Same cross-country comparison /steam offers. It answers a different
+  // question from the store list above — that one compares SHOPS, this compares
+  // COUNTRIES — so a server with an ITAD key still has a reason to ask for it.
+  await attachRegionalPrices(embed, {
+    appId: steamGame?.appId ?? null,
+    country: getSetting(interaction.guildId, 'priceCountry'),
+    availableLocally: steamGame?.availableLocally !== false,
+    // A cross-store price counts: with an ITAD key there IS a local price even
+    // when Steam has none, so this must not fire unprompted on every lookup.
+    hasLocalPrice: rows.length > 0 || Boolean(steamGame?.price) || Boolean(steamGame?.isFree),
+    comingSoon: Boolean(steamGame?.comingSoon),
+    requested: interaction.options.getBoolean('worldwide') ?? false,
+  });
 
   // Watching is opt-in per invocation: the same lookup you just ran, repeated
   // in the background, reported to a channel you name.

@@ -5,7 +5,11 @@ import { toUsd } from '../src/services/fx.js';
 import { rankResults } from '../src/services/steam.js';
 import { countryName, resolveCountry, searchCountries } from '../src/lib/countries.js';
 import { echoChoice, respondInTime } from '../src/lib/autocomplete.js';
-import { describeRegionalPrices, notSoldHere } from '../src/lib/regional-prices.js';
+import {
+  attachRegionalPrices,
+  describeRegionalPrices,
+  notSoldHere,
+} from '../src/lib/regional-prices.js';
 
 const RATES = { VND: 26007.44, TRY: 48.28, BRL: 5.18 };
 
@@ -230,5 +234,55 @@ describe('autocomplete deadline', () => {
     await assert.doesNotReject(() =>
       respondInTime(dead, Promise.resolve([]), { budgetMs: 20, fallback: echoChoice('x') }),
     );
+  });
+});
+
+describe('when the region comparison appears', () => {
+  // The rule is shared by /steam and /deals, and it is subtler than it looks:
+  // on request always, unprompted only when the local store has no price.
+  const fakeEmbed = () => ({
+    fields: [],
+    addFields(field) {
+      this.fields.push(field);
+      return this;
+    },
+  });
+
+  test('stays quiet on an ordinary lookup', async () => {
+    const embed = fakeEmbed();
+    const added = await attachRegionalPrices(embed, {
+      appId: 105600,
+      country: 'US',
+      hasLocalPrice: true,
+      requested: false,
+    });
+    assert.equal(added, false);
+    assert.deepEqual(embed.fields, [], 'should not have called Steam at all');
+  });
+
+  test('explains itself when asked about a game Steam does not list', async () => {
+    const embed = fakeEmbed();
+    await attachRegionalPrices(embed, {
+      appId: null,
+      country: 'US',
+      hasLocalPrice: true,
+      requested: true,
+    });
+    assert.equal(embed.fields.length, 1);
+    assert.match(embed.fields[0].value, /not listed there/);
+  });
+
+  test('says nothing about a non-Steam game nobody asked about', async () => {
+    // An ITAD-only result with a local price should not volunteer an
+    // explanation for a comparison that was never requested.
+    const embed = fakeEmbed();
+    const added = await attachRegionalPrices(embed, {
+      appId: null,
+      country: 'US',
+      hasLocalPrice: false,
+      requested: false,
+    });
+    assert.equal(added, false);
+    assert.deepEqual(embed.fields, []);
   });
 });

@@ -10,6 +10,8 @@
  */
 import { flag } from './regions.js';
 import { getRates, toUsd } from '../services/fx.js';
+import * as steam from '../services/steam.js';
+import { log } from './logger.js';
 
 /**
  * Steam ties purchases to the country of your payment method, and treats
@@ -75,4 +77,63 @@ export function notSoldHere(country, cheapest) {
   return cheapest
     ? `${base} The cheapest region that has it is ${flag(cheapest.code)} ${cheapest.name} at ${cheapest.formatted}.`
     : `${base} I could not find a region that sells it either.`;
+}
+
+/**
+ * Adds the region fields to an embed, for whichever command asked.
+ *
+ * Shared by /steam and /deals so the two cannot drift: the rule about when to
+ * show this is more subtle than it looks — always on request, and also
+ * unprompted when the local store has no price, because that is the case where
+ * silence is misleading rather than merely quiet.
+ *
+ * Steam-only by nature: the comparison works by asking one storefront about
+ * many countries, so a game with no Steam listing has nothing to compare.
+ *
+ * @returns {Promise<boolean>} whether anything was added.
+ */
+export async function attachRegionalPrices(embed, options) {
+  const { appId, country, availableLocally = true, comingSoon = false, requested } = options;
+
+  const localHasPrice = availableLocally && options.hasLocalPrice;
+  if (!requested && localHasPrice) return false;
+
+  if (!appId) {
+    // Only reachable when someone explicitly asked; an automatic attempt on a
+    // game with no Steam listing should stay quiet rather than explain itself.
+    if (requested) {
+      embed.addFields({
+        name: '🌍 Prices by region',
+        value: 'I compare regions through Steam, and this game is not listed there.',
+      });
+    }
+    return requested;
+  }
+
+  const regions = await steam.getRegionalPrices(appId).catch((err) => {
+    log.warn('Regional price lookup failed:', err);
+    return [];
+  });
+  const { lines, ranked, cheapest } = await describeRegionalPrices(regions);
+
+  if (!localHasPrice && !comingSoon) {
+    embed.addFields({
+      name: '🌍 Not available in your region',
+      value: notSoldHere(country, cheapest),
+    });
+  }
+
+  if (lines.length > 0) {
+    embed.addFields({
+      name: ranked ? '🌍 Cheapest regions' : '🌍 Prices by region',
+      value: [lines.join('\n'), '', `*${BUYING_NOTE}*`].join('\n'),
+    });
+  } else if (requested) {
+    embed.addFields({
+      name: '🌍 Prices by region',
+      value: 'No region I checked is selling this right now.',
+    });
+  }
+
+  return true;
 }
