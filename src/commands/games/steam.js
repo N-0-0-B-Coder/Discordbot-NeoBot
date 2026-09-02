@@ -126,7 +126,7 @@ export async function execute(interaction) {
   // Compare across countries when asked — and ALWAYS when the local store has
   // no price, because that is the case where "no price" is a misleading answer:
   // the game may simply not be sold here while costing $9.99 elsewhere.
-  const localHasPrice = Boolean(game.price) || game.isFree;
+  const localHasPrice = game.availableLocally !== false && (Boolean(game.price) || game.isFree);
   const wantsWorldwide = interaction.options.getBoolean('worldwide') ?? false;
 
   if (wantsWorldwide || !localHasPrice) {
@@ -169,6 +169,7 @@ export async function execute(interaction) {
 
 function priceLine(game) {
   if (game.comingSoon) return 'Not out yet';
+  if (game.availableLocally === false) return 'Not sold in your region';
   if (game.isFree) return 'Free to play';
   if (!game.price) return 'Unavailable';
   return game.price.discountPercent > 0

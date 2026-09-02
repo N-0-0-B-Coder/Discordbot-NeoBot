@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { flag, REGIONS } from '../src/lib/regions.js';
 import { toUsd } from '../src/services/fx.js';
+import { rankResults } from '../src/services/steam.js';
 import { describeRegionalPrices, notSoldHere } from '../src/lib/regional-prices.js';
 
 const RATES = { VND: 26007.44, TRY: 48.28, BRL: 5.18 };
@@ -91,5 +92,47 @@ describe('not sold locally', () => {
   test('says so plainly when nowhere sells it', () => {
     const line = notSoldHere('VN', null);
     assert.ok(line.includes('could not find a region'));
+  });
+});
+
+describe('search result ranking', () => {
+  // Searching Vietnam for "Helldivers 2" returned only its armour-set DLC,
+  // because the base game is not sold there. Two things were wrong: the search
+  // was scoped to the local storefront, and DLC outranked games.
+  const items = [
+    { id: 2, name: 'HELLDIVERS™ 2 - TR-117 Alpha Commander Armor Set', type: 'dlc' },
+    { id: 1, name: 'HELLDIVERS™ 2', type: 'app' },
+    { id: 3, name: 'HELLDIVERS™ 2 - Super Citizen Edition', type: 'app' },
+  ];
+
+  test('the base game outranks its DLC and editions', () => {
+    const [first] = rankResults(items, 'helldivers 2');
+    assert.equal(first.id, 1, `got "${rankResults(items, 'helldivers 2')[0].name}"`);
+  });
+
+  test('DLC sinks below every plain app', () => {
+    const ranked = rankResults(items, 'helldivers');
+    assert.equal(ranked[ranked.length - 1].type, 'dlc');
+  });
+
+  test('an exact title match wins', () => {
+    const ranked = rankResults(
+      [{ id: 1, name: 'Terraria Soundtrack' }, { id: 2, name: 'Terraria' }],
+      'terraria',
+    );
+    assert.equal(ranked[0].id, 2);
+  });
+
+  test('a missing type is treated as an app, not demoted', () => {
+    // The endpoint is undocumented; losing the field must not reorder
+    // everything into nonsense.
+    const ranked = rankResults([{ id: 1, name: 'Portal 2' }], 'portal 2');
+    assert.equal(ranked[0].id, 1);
+  });
+
+  test('ranking never mutates the input', () => {
+    const original = [...items];
+    rankResults(items, 'helldivers');
+    assert.deepEqual(items, original);
   });
 });

@@ -28,49 +28,114 @@ const regionCache = createCache({ ttlMs: 60 * 60 * 1000, maxEntries: 500 });
  * work nobody can receive.
  */
 export async function searchApps(guildId, term, limit = 5, fetchOptions = {}) {
+  // SEARCH the widest catalogue, PRICE in the local one. Searching the local
+  // storefront hides everything it does not sell — and hides it partially,
+  // which is worse than hiding it completely: Helldivers 2 is not sold in
+  // Vietnam, so a Vietnamese search for it returned only its armour-set DLC,
+  // and the game itself was unfindable. Availability is now reported by the
+  // regional comparison instead of silently shaping what you can look up.
+  let items = await rawSearch(SEARCH_COUNTRY, term, fetchOptions);
+
+  // The wide catalogue is not a strict superset — a title can be delisted in
+  // the US and sold elsewhere — so fall back rather than insisting.
+  if (items.length === 0) {
+    items = await rawSearch(getSetting(guildId, 'priceCountry'), term, fetchOptions);
+  }
+
+  return rankResults(items, term)
+    .slice(0, limit)
+    .map((item) => ({
+      appId: item.id,
+      name: item.name,
+      thumbnail: item.tiny_image ?? null,
+    }));
+}
+
+/**
+ * The storefront searched for DISCOVERY, as opposed to for pricing.
+ *
+ * The US catalogue is the broadest generally available one. It is not
+ * universal, which is why searchApps() falls back to the server's own country.
+ */
+const SEARCH_COUNTRY = 'US';
+
+async function rawSearch(country, term, fetchOptions) {
   const url = new URL('/api/storesearch/', STORE);
   url.searchParams.set('term', term);
   url.searchParams.set('l', 'english');
-  url.searchParams.set('cc', getSetting(guildId, 'priceCountry'));
+  url.searchParams.set('cc', country);
 
   const payload = await searchCache.wrap(
-    `search:${guildId}:${term}`,
+    `search:${country}:${term}`,
     () => fetchJson(url, fetchOptions),
   );
+  return payload?.items ?? [];
+}
 
-  return (payload?.items ?? []).slice(0, limit).map((item) => ({
-    appId: item.id,
-    name: item.name,
-    thumbnail: item.tiny_image ?? null,
-  }));
+/**
+ * Puts base games above their add-ons.
+ *
+ * Steam returns DLC interleaved with games, and searching a title whose base
+ * game is unavailable leaves a list made entirely of its DLC — which reads as
+ * "this game does not exist" rather than "you cannot buy it here". Even where
+ * the base game IS present, "Helldivers 2" should outrank "Helldivers 2 -
+ * TR-117 Alpha Commander Armor Set".
+ *
+ * Exported for testing: the ordering is the whole fix, and it is pure.
+ */
+export function rankResults(items, term) {
+  const query = term.trim().toLowerCase();
+
+  const score = (item) => {
+    const name = String(item.name ?? '').toLowerCase();
+    let value = 0;
+    // Steam labels these; treat a missing type as an ordinary app rather than
+    // demoting everything on an endpoint that stops sending the field.
+    if (item.type && item.type !== 'app' && item.type !== 'game') value -= 4;
+    // A separator usually introduces an edition, a pack or a DLC name.
+    if (/\s[-–—:]\s/.test(name)) value -= 2;
+    if (name === query) value += 4;
+    else if (name.startsWith(query)) value += 2;
+    return value;
+  };
+
+  // Sort is stable in Node, so equal scores keep Steam's own relevance order.
+  return [...items].sort((a, b) => score(b) - score(a));
 }
 
 /** Full store details for one app id, or null when Steam has nothing. */
 export async function getAppDetails(guildId, appId) {
-  const url = new URL('/api/appdetails', STORE);
-  url.searchParams.set('appids', String(appId));
-  url.searchParams.set('cc', getSetting(guildId, 'priceCountry'));
-  url.searchParams.set('l', 'english');
+  const country = getSetting(guildId, 'priceCountry');
+  let entry = await appDetails(appId, country);
 
-  const payload = await detailsCache.wrap(
-    `details:${guildId}:${appId}`,
-    () => fetchJson(url),
-  );
+  // A game the local store does not carry can come back with no data at all.
+  // Returning null there would report "nothing matched", which is the same
+  // wrong answer as before by a different route — the game exists, it is just
+  // not for sale here. Fetch the details from the discovery storefront and let
+  // the caller say so.
+  const availableLocally = Boolean(entry);
+  if (!entry && country !== SEARCH_COUNTRY) {
+    entry = await appDetails(appId, SEARCH_COUNTRY);
+  }
+  if (!entry) return null;
 
-  const entry = payload?.[String(appId)];
-  if (!entry?.success || !entry.data) return null;
-
-  const data = entry.data;
+  const data = entry;
   const price = data.price_overview;
 
   return {
     appId,
+    availableLocally,
     name: data.name,
     description: data.short_description ?? null,
     headerImage: data.header_image ?? null,
     isFree: Boolean(data.is_free),
     // Steam returns money as integer minor units (1999 = $19.99).
-    price: price
+    //
+    // Suppressed entirely when the details came from the fallback storefront:
+    // that is another country's price, and showing it under a local heading
+    // would be worse than showing none. The regional comparison reports it
+    // properly, labelled with the country it belongs to.
+    price: price && availableLocally
       ? {
           discountPercent: price.discount_percent ?? 0,
           initial: price.initial_formatted || price.final_formatted,
@@ -90,6 +155,24 @@ export async function getAppDetails(guildId, appId) {
     comingSoon: Boolean(data.release_date?.coming_soon),
     url: `${STORE}/app/${appId}/`,
   };
+}
+
+/** One storefront's data for an app, or null when it does not carry it. */
+async function appDetails(appId, country) {
+  const url = new URL('/api/appdetails', STORE);
+  url.searchParams.set('appids', String(appId));
+  url.searchParams.set('cc', country);
+  url.searchParams.set('l', 'english');
+
+  try {
+    const payload = await detailsCache.wrap(`details:${country}:${appId}`, () =>
+      fetchJson(url),
+    );
+    const entry = payload?.[String(appId)];
+    return entry?.success && entry.data ? entry.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Convenience: search by name and return details for the best match. */
